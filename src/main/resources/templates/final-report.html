@@ -31,9 +31,55 @@
         table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
         td, th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
         th { color: var(--muted); font-weight: 500; }
-    </style>
+            /* Standalone report actions. Hidden when printing or rendering the PDF. */
+        .report-toolbar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between;
+            align-items: center; background: #fff; border: 1px solid var(--line); padding: 10px 12px;
+            border-radius: 8px; margin-bottom: 24px; }
+        .report-toolbar .report-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .report-toolbar button, .report-toolbar a { font: inherit; font-size: 13px; border-radius: 7px;
+            padding: 8px 12px; cursor: pointer; border: 1px solid #1f5c6b; color: #1f5c6b;
+            text-decoration: none; background: #fff; font-weight: 600; }
+        .report-toolbar a.download-pdf { color: #fff; background: #1f5c6b; }
+        .report-toolbar button:hover, .report-toolbar a:hover { filter: brightness(.94); }
+        .report-toolbar :focus-visible, .kai-back-dialog :focus-visible { outline: 2px solid #1f5c6b; outline-offset: 2px; }
+        .kai-back-dialog { border: 1px solid var(--line); border-radius: 12px; max-width: 440px;
+            width: calc(100vw - 32px); padding: 24px; background: #fff; color: var(--ink);
+            box-shadow: 0 18px 45px rgba(23,37,43,.18); }
+        .kai-back-dialog::backdrop { background: rgba(23,37,43,.45); }
+        .kai-back-dialog h2 { margin: 0 0 12px; font: 600 21px/1.3 system-ui,sans-serif; }
+        .kai-back-dialog p { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+        .kai-back-dialog .choices { display: flex; gap: 9px; flex-wrap: wrap; }
+        .kai-back-dialog button { font: inherit; padding: 9px 12px; background: #fff; color: #1f5c6b;
+            cursor: pointer; border-radius: 6px; border: 1px solid #1f5c6b; }
+        .kai-back-dialog button.reset { background: #1f5c6b; color: #fff; }
+        .kai-back-dialog form { display: inline; }
+        @media print {
+            .report-toolbar, .kai-back-dialog { display: none !important; }
+            body { background: #fff; max-width: none; }
+            section.file { break-inside: avoid; }
+        }
+        .report-toolbar[hidden] { display: none !important; }
+</style>
 </head>
-<body>
+<body><div class="report-toolbar" id="kai-report-toolbar" hidden>
+    <strong>Report actions</strong>
+    <div class="report-actions">
+        <button type="button" id="kai-report-back">← Back to chat</button>
+        <a class="download-pdf" id="kai-report-pdf" href="#">Download PDF</a>
+    </div>
+</div>
+<dialog class="kai-back-dialog" id="kai-back-dialog" aria-labelledby="kai-back-title">
+    <h2 id="kai-back-title">Return to KAI?</h2>
+    <p>Keep your conversation, or reset it for a fresh start. Finalized reports and original-file backups stay saved.</p>
+    <div class="choices">
+        <form action="/new" method="post" id="kai-report-reset-form">
+            <button type="submit" class="reset">Reset and Go Back</button>
+        </form>
+        <button type="button" id="kai-keep-chat">Just Go Back</button>
+        <button type="button" id="kai-cancel-back">Cancel</button>
+    </div>
+</dialog>
+
 <h1>Kai change report</h1>
 <p class="meta" th:text="${run} + ': ' + ${rows.size()} + (${rows.size() == 1} ? ' file' : ' files') + ' selected for writing. The originals are in the Original files folder next to this report.'"></p>
 <p class="meta" th:if="${report.source}" th:text="'Checked against the updated file ' + ${report.source.name()} + ' (not scanned)'"></p>
@@ -60,5 +106,45 @@
         </tr>
     </table>
 </th:block>
+<script>
+(() => {
+    const toolbar = document.getElementById('kai-report-toolbar');
+    const pdfLink = document.getElementById('kai-report-pdf');
+    const dialog = document.getElementById('kai-back-dialog');
+    const online = /^https?:$/.test(window.location.protocol) &&
+        window.location.pathname.startsWith('/report/');
+
+    toolbar.hidden = false;
+    if (online) {
+        pdfLink.href = window.location.pathname.replace(/\/$/, '') + '/pdf';
+    } else {
+        // The archived Report.html is self-contained and usable with KAI shut down.
+        pdfLink.removeAttribute('href');
+        pdfLink.textContent = 'Save as PDF (print)';
+        pdfLink.setAttribute('role', 'button');
+        pdfLink.tabIndex = 0;
+        pdfLink.addEventListener('click', () => window.print());
+        pdfLink.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.print(); } });
+    }
+
+    function backToChat() {
+        if (!online) {
+            window.alert('Open this report through the running KAI application to return to chat.');
+            return;
+        }
+        dialog.showModal();
+    }
+    document.getElementById('kai-report-back').addEventListener('click', backToChat);
+    document.getElementById('kai-cancel-back').addEventListener('click', () => dialog.close());
+    document.getElementById('kai-keep-chat').addEventListener('click', () => {
+        dialog.close();
+        window.location.assign('/');
+    });
+    document.getElementById('kai-report-reset-form').addEventListener('submit', event => {
+        if (!online) event.preventDefault();
+    });
+})();
+</script>
+
 </body>
 </html>

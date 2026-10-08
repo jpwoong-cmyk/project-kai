@@ -76,6 +76,18 @@
 			<type>pom</type>
 			<scope>compile</scope>
 		</dependency>
+
+		<!-- Generate a downloadable PDF from saved finalized reports -->
+		<dependency>
+			<groupId>io.github.openhtmltopdf</groupId>
+			<artifactId>openhtmltopdf-pdfbox</artifactId>
+			<version>1.1.87</version>
+		</dependency>
+		<dependency>
+			<groupId>org.jsoup</groupId>
+			<artifactId>jsoup</artifactId>
+			<version>1.20.1</version>
+		</dependency>
 	</dependencies>
 
 	<build>

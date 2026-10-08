@@ -13,7 +13,6 @@ import java.util.concurrent.Executors;
 
 import jakarta.servlet.http.HttpSession;
 
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -266,21 +265,6 @@ public class ChatController {
 			return ResponseEntity.notFound().build();
 		}
 		return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(Files.readString(file));
-	}
-
-
-	// Download the same finalized report as a PDF, without changing any documents.
-	@GetMapping("/report/{run}/pdf")
-	public ResponseEntity<byte[]> reportPdf(@PathVariable String run) throws IOException {
-		Path file = setup.ready() ? historyFolder.report(setup.properties().backupDir(), run) : null;
-		if (file == null || !Files.isRegularFile(file)) {
-			return ResponseEntity.notFound().build();
-		}
-		String safeName = run.replaceAll("[^A-Za-z0-9._-]+", "-");
-		return ResponseEntity.ok()
-				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"KAI-Report-" + safeName + ".pdf\"")
-				.contentType(MediaType.APPLICATION_PDF)
-				.body(ReportPdf.render(Files.readString(file)));
 	}
 
 	// Every finalized change, newest first: the same page as History.html in the history folder
