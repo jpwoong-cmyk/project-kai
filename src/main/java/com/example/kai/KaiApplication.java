@@ -15,8 +15,18 @@ public class KaiApplication {
 		// so a missing or wrong file never stops Kai: the user fixes it in the browser.
 		ConfigurableApplicationContext ctx;
 		try {
-			ctx = new SpringApplication(KaiApplication.class)
-					.run(KaiConfig.springArgs(args, KaiConfig.springCopy(KaiConfig.locate(args))));
+SpringApplication app = new SpringApplication(KaiApplication.class);
+
+// Allow native desktop folder selection dialogs.
+app.setHeadless(false);
+
+ctx = app.run(
+    KaiConfig.springArgs(
+        args,
+        KaiConfig.springCopy(KaiConfig.locate(args))
+    )
+);
+
 		}
 		catch (Exception e) { // e.g. port already in use; Spring has already logged the details
 			KaiConfig.exit("Kai could not start. The reason is shown above.");
