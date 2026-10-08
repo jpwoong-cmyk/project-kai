@@ -77,7 +77,51 @@ main .user p { max-width: min(76%, 1000px); }
 }
 .kai-sidebar-close:hover, .kai-sidebar-toggle:hover { background: var(--paper); border-color: var(--teal); }
 .kai-sidebar-close:focus-visible, .kai-sidebar-toggle:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
-.kai-top-note { font-size: 13px; color: var(--muted); margin: 0; }
+/* Intelligence Sweep: a cyan signal passes across an otherwise legible technical title. */
+.kai-top-note {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    font: 700 13px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: .035em;
+    color: #214f60;
+    background-image: linear-gradient(105deg,
+        #214f60 0%, #214f60 38%, #0a83ab 46%, #7bdff6 50%,
+        #0a83ab 54%, #214f60 62%, #214f60 100%);
+    background-size: 280% 100%;
+    background-position: 100% 50%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: kai-intelligence-sweep 8s ease-in-out infinite;
+}
+.kai-top-note::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -3px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #2aaacc, #a0effe, transparent);
+    opacity: .75;
+    transform: scaleX(.08);
+    transform-origin: left center;
+    animation: kai-signal-line 8s ease-in-out infinite;
+}
+@keyframes kai-intelligence-sweep {
+    0%, 12% { background-position: 100% 50%; }
+    66%, 100% { background-position: 0% 50%; }
+}
+@keyframes kai-signal-line {
+    0%, 12% { transform: scaleX(.08); opacity: .1; }
+    53% { transform: scaleX(1); opacity: .75; }
+    78%, 100% { transform: scaleX(.08); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .kai-top-note, .kai-top-note::after { animation: none; }
+    .kai-top-note { background: none; -webkit-text-fill-color: #214f60; }
+    .kai-top-note::after { display: none; }
+}
 .kai-sidebar-scrim { display: none; }
 body.kai-sidebar-collapsed { --kai-sidebar-width: 0px; }
 body.kai-sidebar-collapsed .kai-sidebar { transform: translateX(-100%); }

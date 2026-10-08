@@ -4,6 +4,7 @@ import java.awt.GraphicsEnvironment;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -93,34 +94,91 @@ public class StartController {
     }
 
     private static Map<String, String> browseWindows() {
-        // Windows PowerShell includes WinForms. A folder path is printed only when OK is chosen.
-        // The script is constant and receives no user-controlled command text.
+        // Use the Windows Vista+ Explorer folder picker (IFileDialog with FOS_PICKFOLDERS).
+        // FolderBrowserDialog used by Windows PowerShell 5.1 can display the older XP-style tree.
+        // The script is constant: no paths or commands from the browser are interpolated.
         String script = """
                 $ErrorActionPreference = 'Stop'
-                [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-                Add-Type -AssemblyName System.Windows.Forms
-                $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-                $dialog.Description = 'Select folder to scan'
-                $dialog.ShowNewFolderButton = $true
-                try {
-                    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                        [Console]::Out.Write($dialog.SelectedPath)
-                    }
-                } finally {
-                    $dialog.Dispose()
+                Add-Type -TypeDefinition @'
+                using System;
+                using System.Runtime.InteropServices;
+
+                [ComImport, Guid("42f85136-db7e-439c-85f1-e4075d135fc8"),
+                 InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+                public interface IKaiFileDialog {
+                    [PreserveSig] int Show(IntPtr owner);
+                    void SetFileTypes(uint count, IntPtr filters);
+                    void SetFileTypeIndex(uint index);
+                    void GetFileTypeIndex(out uint index);
+                    void Advise(IntPtr events, out uint cookie);
+                    void Unadvise(uint cookie);
+                    void SetOptions(uint options);
+                    void GetOptions(out uint options);
+                    void SetDefaultFolder(IntPtr item);
+                    void SetFolder(IntPtr item);
+                    void GetFolder(out IntPtr item);
+                    void GetCurrentSelection(out IntPtr item);
+                    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
+                    void GetFileName(out IntPtr name);
+                    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
+                    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
+                    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
+                    void GetResult(out IKaiShellItem item);
                 }
+
+                [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"),
+                 InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+                public interface IKaiShellItem {
+                    void BindToHandler(IntPtr context, ref Guid handler, ref Guid iid, out IntPtr result);
+                    void GetParent(out IKaiShellItem parent);
+                    void GetDisplayName(uint type, out IntPtr name);
+                }
+
+                public static class KaiNativeFolderPicker {
+                    public static string Choose() {
+                        // CLSID_FileOpenDialog, FOS_PICKFOLDERS and FOS_FORCEFILESYSTEM.
+                        Type type = Type.GetTypeFromCLSID(new Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7"));
+                        IKaiFileDialog dialog = (IKaiFileDialog)Activator.CreateInstance(type);
+                        try {
+                            uint options;
+                            dialog.GetOptions(out options);
+                            dialog.SetOptions(options | 0x20u | 0x40u | 0x800u);
+                            dialog.SetTitle("Select a folder for KAI");
+                            int result = dialog.Show(IntPtr.Zero);
+                            if (result == unchecked((int)0x800704C7)) return ""; // User cancelled.
+                            if (result != 0) Marshal.ThrowExceptionForHR(result);
+
+                            IKaiShellItem item;
+                            dialog.GetResult(out item);
+                            try {
+                                IntPtr path;
+                                item.GetDisplayName(0x80058000u, out path); // SIGDN_FILESYSPATH
+                                try { return Marshal.PtrToStringUni(path) ?? ""; }
+                                finally { Marshal.FreeCoTaskMem(path); }
+                            }
+                            finally { Marshal.ReleaseComObject(item); }
+                        }
+                        finally { Marshal.ReleaseComObject(dialog); }
+                    }
+                }
+                '@
+                $folder = [KaiNativeFolderPicker]::Choose()
+                [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+                if ($folder) { [Console]::Out.Write($folder) }
                 """;
         try {
-            Process picker = new ProcessBuilder("powershell.exe", "-NoProfile", "-STA", "-Command", script)
-                    .redirectErrorStream(true).start();
+            // EncodedCommand safely transports the multiline script without shell quoting issues.
+            String encoded = Base64.getEncoder().encodeToString(
+                    script.getBytes(StandardCharsets.UTF_16LE));
+            Process picker = new ProcessBuilder("powershell.exe", "-NoProfile", "-STA",
+                    "-EncodedCommand", encoded).redirectErrorStream(true).start();
             String result = new String(picker.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
             int exit = picker.waitFor();
             if (exit != 0) {
                 return Map.of("error", "Windows folder chooser failed. "
                         + (result.isEmpty() ? "Check whether PowerShell is permitted." : result));
             }
-            // Empty means Cancel was selected. The browser leaves the current value untouched.
-            return Map.of("path", result);
+            return Map.of("path", result); // Empty = cancel; the field remains unchanged.
         } catch (IOException ex) {
             return Map.of("error", "Could not start the Windows folder chooser: " + ex.getMessage());
         } catch (InterruptedException ex) {

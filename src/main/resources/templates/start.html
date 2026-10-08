@@ -69,6 +69,7 @@
         input:focus, select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(31, 92, 107, .15); }
         .invalid > input, .invalid > select, .invalid > .row > input { border-color: var(--error); }
         .row { display: flex; gap: 6px; }
+        .row > input { flex: 1 1 auto; min-width: 0; }
         .folder + .folder { margin-top: 10px; }
 
         /* Result line under a field: verified (with the marker) or what is wrong */
@@ -168,7 +169,10 @@
             </div>
             <div class="field">
                 <label for="backup">History folder</label>
-                <input id="backup" autocomplete="off" placeholder="~/Kai history">
+                <div class="row">
+                    <input id="backup" autocomplete="off" placeholder="~/Kai history">
+                    <button type="button" class="browse" id="browse-backup" title="Choose where KAI saves reports and original-file backups">Browse</button>
+                </div>
                 <p class="status" id="s-backup" aria-live="polite"></p>
                 <p class="hint">Kai keeps a report of every change here, with the original files. It must be outside the folders to scan.</p>
             </div>
@@ -461,19 +465,17 @@
     modelName.addEventListener("input", () => showModel(model()));
 
     $("add").addEventListener("click", () => addRow("", true));
-    // Open the folder chooser on the same computer where the Java application runs.
-    foldersEl.addEventListener("click", async e => {
-        const button = e.target.closest("button.browse");
-        if (!button || !foldersEl.contains(button)) return;
-        const input = button.closest(".folder").querySelector("input");
+    // One modern local folder picker for both scanning paths and the History location.
+    async function chooseFolder(button, input) {
+        if (button.disabled) return;
         button.disabled = true;
         button.textContent = "Opening…";
         try {
-            const response = await fetch("/start/browse", { method: "POST" });
+            const response = await fetch("/start/browse", { method: "POST", credentials: "same-origin" });
             if (!response.ok) throw new Error("Folder picker unavailable (" + response.status + ")");
             const result = await response.json();
             if (result.error) throw new Error(result.error);
-            if (!result.path) return; // User cancelled: retain existing path.
+            if (!result.path) return; // Cancel does not change the current folder.
             input.value = result.path;
             input.dispatchEvent(new Event("input", { bubbles: true }));
             input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -483,7 +485,14 @@
             button.disabled = false;
             button.textContent = "Browse";
         }
+    }
+    foldersEl.addEventListener("click", e => {
+        const button = e.target.closest("button.browse");
+        if (button && foldersEl.contains(button)) {
+            chooseFolder(button, button.closest(".folder").querySelector("input"));
+        }
     });
+    $("browse-backup").addEventListener("click", e => chooseFolder(e.currentTarget, $("backup")));
 
     foldersEl.addEventListener("click", e => {
         if (!e.target.classList.contains("icon")) return;

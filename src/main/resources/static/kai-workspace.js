@@ -71,7 +71,7 @@
     toggle.setAttribute('aria-controls', 'kai-sidebar');
     toggle.setAttribute('aria-label', 'Expand or collapse workspace sidebar');
     header.prepend(toggle);
-    const note = make('span', 'kai-top-note', 'Document analysis workspace');
+    const note = make('span', 'kai-top-note', 'Knowledge Analysis Intelligence');
     header.append(note);
     const scrim = make('button', 'kai-sidebar-scrim');
     scrim.type = 'button'; scrim.setAttribute('aria-label', 'Close sidebar');
