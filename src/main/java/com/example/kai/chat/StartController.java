@@ -2,6 +2,14 @@ package com.example.kai.chat;
 
 import java.util.List;
 import java.util.Map;
+import java.awt.GraphicsEnvironment;
+import java.lang.reflect.InvocationTargetException;
+import java.util.concurrent.atomic.AtomicReference;
+import javax.swing.JFileChooser;
+import javax.swing.SwingUtilities;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.servlet.http.HttpSession;
 
@@ -28,6 +36,52 @@ public class StartController {
 	@GetMapping("/start")
 	public String start() {
 		return "start"; // -> templates/start.html
+	}
+
+	// Local desktop picker. Browsers cannot provide an absolute file-system path themselves.
+	@PostMapping("/start/browse")
+	@ResponseBody
+	public Map<String, String> browse(HttpServletRequest request) {
+		String remote = request.getRemoteAddr();
+		if (!"127.0.0.1".equals(remote) && !"::1".equals(remote)
+				&& !"0:0:0:0:0:0:0:1".equals(remote)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+		}
+		String fetchSite = request.getHeader("Sec-Fetch-Site");
+		if (fetchSite != null && !"same-origin".equals(fetchSite) && !"none".equals(fetchSite)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+		}
+		String origin = request.getHeader("Origin");
+		if (origin != null) {
+			String expected = request.getScheme() + "://" + request.getServerName()
+					+ ((request.getServerPort() == 80 && "http".equals(request.getScheme()))
+					|| (request.getServerPort() == 443 && "https".equals(request.getScheme()))
+					? "" : ":" + request.getServerPort());
+			if (!origin.equalsIgnoreCase(expected)) {
+				throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+			}
+		}
+		if (GraphicsEnvironment.isHeadless()) {
+			return Map.of("error", "A graphical desktop is required. Run Kai locally, not inside Codespaces.");
+		}
+		AtomicReference<String> selection = new AtomicReference<>("");
+		try {
+			SwingUtilities.invokeAndWait(() -> {
+				JFileChooser chooser = new JFileChooser();
+				chooser.setDialogTitle("Select folder to scan");
+				chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+				chooser.setMultiSelectionEnabled(false);
+				if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+					selection.set(chooser.getSelectedFile().getAbsolutePath());
+				}
+			});
+			return Map.of("path", selection.get());
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			return Map.of("error", "Folder selection interrupted.");
+		} catch (InvocationTargetException ex) {
+			return Map.of("error", "Could not open folder picker.");
+		}
 	}
 
 	// What kai.properties says, already checked (blank fields and nothing checked if there is no file)

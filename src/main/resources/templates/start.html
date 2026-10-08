@@ -86,6 +86,10 @@
         .icon:hover { color: var(--error); border-color: var(--error); }
         .show { flex: none; padding: 0 12px; font-size: 13px; color: var(--teal); background: var(--sheet); border: 1px solid var(--line); }
         .add { margin-top: 10px; font-size: 13px; padding: 5px 12px; background: none; color: var(--teal); border: 1px dashed var(--teal); }
+        .browse { flex: none; padding: 0 14px; font-size: 13px; font-weight: 600;
+                  color: var(--teal); background: var(--sheet); border: 1px solid var(--line); }
+        .browse:hover { border-color: var(--teal); background: var(--paper); }
+        .browse:disabled { opacity: .5; cursor: wait; }
         button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
         .box { padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; font-size: 14px; }
@@ -209,6 +213,7 @@
         <div class="folder">
             <div class="row">
                 <input autocomplete="off" placeholder="~/Documents/Runbooks" aria-label="Folder to scan">
+                <button type="button" class="browse" title="Choose a folder on this computer">Browse</button>
                 <button type="button" class="icon" title="Remove this folder" aria-label="Remove this folder">×</button>
             </div>
             <p class="status" aria-live="polite"></p>
@@ -456,6 +461,30 @@
     modelName.addEventListener("input", () => showModel(model()));
 
     $("add").addEventListener("click", () => addRow("", true));
+    // Open the folder chooser on the same computer where the Java application runs.
+    foldersEl.addEventListener("click", async e => {
+        const button = e.target.closest("button.browse");
+        if (!button || !foldersEl.contains(button)) return;
+        const input = button.closest(".folder").querySelector("input");
+        button.disabled = true;
+        button.textContent = "Opening…";
+        try {
+            const response = await fetch("/start/browse", { method: "POST" });
+            if (!response.ok) throw new Error("Folder picker unavailable (" + response.status + ")");
+            const result = await response.json();
+            if (result.error) throw new Error(result.error);
+            if (!result.path) return; // User cancelled: retain existing path.
+            input.value = result.path;
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch (error) {
+            window.alert(error.message);
+        } finally {
+            button.disabled = false;
+            button.textContent = "Browse";
+        }
+    });
+
     foldersEl.addEventListener("click", e => {
         if (!e.target.classList.contains("icon")) return;
         const row = e.target.closest(".folder");
