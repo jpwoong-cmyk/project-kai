@@ -4,6 +4,9 @@ import java.awt.GraphicsEnvironment;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -30,6 +33,8 @@ import com.example.kai.config.Setup;
 @Controller
 public class StartController {
 
+    private static final String PICKER_RESULT_MARKER = "KAI_FOLDER_RESULT:";
+
     private final Setup setup;
 
     public StartController(Setup setup) {
@@ -41,8 +46,8 @@ public class StartController {
         return "start"; // -> templates/start.html
     }
 
-    // Local folder picker. The Windows path is selected by PowerShell/WinForms, not Java AWT.
-    // This avoids Spring or a previously initialized JVM marking Java graphics as headless.
+    // Local folder picker. The Windows path is selected with the native Explorer dialog.
+    // The endpoint is restricted to requests from the local KAI browser.
     @PostMapping("/start/browse")
     @ResponseBody
     public Map<String, String> browse(HttpServletRequest request) {
@@ -77,7 +82,7 @@ public class StartController {
         try {
             SwingUtilities.invokeAndWait(() -> {
                 JFileChooser chooser = new JFileChooser();
-                chooser.setDialogTitle("Select folder to scan");
+                chooser.setDialogTitle("Select folder for KAI");
                 chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
                 chooser.setMultiSelectionEnabled(false);
                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
@@ -94,11 +99,11 @@ public class StartController {
     }
 
     private static Map<String, String> browseWindows() {
-        // Use the Windows Vista+ Explorer folder picker (IFileDialog with FOS_PICKFOLDERS).
-        // FolderBrowserDialog used by Windows PowerShell 5.1 can display the older XP-style tree.
-        // The script is constant: no paths or commands from the browser are interpolated.
+        // Windows Vista+ Explorer picker: IFileOpenDialog + FOS_PICKFOLDERS.
+        // No browser-provided input is ever interpolated into this fixed script.
         String script = """
                 $ErrorActionPreference = 'Stop'
+                $ProgressPreference = 'SilentlyContinue'
                 Add-Type -TypeDefinition @'
                 using System;
                 using System.Runtime.InteropServices;
@@ -136,7 +141,6 @@ public class StartController {
 
                 public static class KaiNativeFolderPicker {
                     public static string Choose() {
-                        // CLSID_FileOpenDialog, FOS_PICKFOLDERS and FOS_FORCEFILESYSTEM.
                         Type type = Type.GetTypeFromCLSID(new Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7"));
                         IKaiFileDialog dialog = (IKaiFileDialog)Activator.CreateInstance(type);
                         try {
@@ -147,7 +151,6 @@ public class StartController {
                             int result = dialog.Show(IntPtr.Zero);
                             if (result == unchecked((int)0x800704C7)) return ""; // User cancelled.
                             if (result != 0) Marshal.ThrowExceptionForHR(result);
-
                             IKaiShellItem item;
                             dialog.GetResult(out item);
                             try {
@@ -163,22 +166,42 @@ public class StartController {
                 }
                 '@
                 $folder = [KaiNativeFolderPicker]::Choose()
-                [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-                if ($folder) { [Console]::Out.Write($folder) }
+                # Emit only a marked, Base64-encoded UTF-8 result on stdout.
+                # PowerShell startup/progress diagnostics can produce CLIXML on stderr.
+                $encodedPath = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($folder))
+                [Console]::Out.WriteLine('KAI_FOLDER_RESULT:' + $encodedPath)
                 """;
         try {
-            // EncodedCommand safely transports the multiline script without shell quoting issues.
-            String encoded = Base64.getEncoder().encodeToString(
+            String encodedScript = Base64.getEncoder().encodeToString(
                     script.getBytes(StandardCharsets.UTF_16LE));
+            // Keep stderr separate. In Windows PowerShell, module initialization progress
+            // may appear as '#< CLIXML' on stderr even when the dialog worked.
             Process picker = new ProcessBuilder("powershell.exe", "-NoProfile", "-STA",
-                    "-EncodedCommand", encoded).redirectErrorStream(true).start();
-            String result = new String(picker.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+                    "-EncodedCommand", encodedScript)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            String stdout = new String(picker.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exit = picker.waitFor();
             if (exit != 0) {
-                return Map.of("error", "Windows folder chooser failed. "
-                        + (result.isEmpty() ? "Check whether PowerShell is permitted." : result));
+                return Map.of("error", "Windows folder chooser failed. Check whether Windows PowerShell is permitted.");
             }
-            return Map.of("path", result); // Empty = cancel; the field remains unchanged.
+            String chosen = decodePickerResult(stdout);
+            if (chosen == null) {
+                return Map.of("error", "Windows folder chooser returned no valid selection result.");
+            }
+            // An empty marked result is Cancel; leave the existing field untouched.
+            if (chosen.isEmpty()) {
+                return Map.of("path", "");
+            }
+            // Never let diagnostic text or a bad path enter KAI's folder settings.
+            try {
+                if (!Files.isDirectory(Path.of(chosen))) {
+                    return Map.of("error", "The selected folder no longer exists or is inaccessible.");
+                }
+            } catch (InvalidPathException ex) {
+                return Map.of("error", "The folder picker returned an invalid path.");
+            }
+            return Map.of("path", chosen);
         } catch (IOException ex) {
             return Map.of("error", "Could not start the Windows folder chooser: " + ex.getMessage());
         } catch (InterruptedException ex) {
@@ -187,15 +210,31 @@ public class StartController {
         }
     }
 
-    // What kai.properties says, already checked (blank fields and nothing checked if there is no file)
+    // Strictly accept the marked Base64 result, never incidental PowerShell output.
+    // null means malformed/missing output; empty string means the user pressed Cancel.
+    private static String decodePickerResult(String stdout) {
+        for (String line : stdout.split("\\R")) {
+            if (!line.startsWith(PICKER_RESULT_MARKER)) {
+                continue;
+            }
+            try {
+                byte[] bytes = Base64.getDecoder().decode(line.substring(PICKER_RESULT_MARKER.length()).trim());
+                return new String(bytes, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException ex) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // What kai.properties says, already checked (blank fields and nothing checked if no file)
     @GetMapping("/start/state")
     @ResponseBody
     public Setup.State state() {
         return setup.state();
     }
 
-    public record FoldersRequest(List<String> scan, String backup) {
-    }
+    public record FoldersRequest(List<String> scan, String backup) { }
 
     @PostMapping("/start/folders")
     @ResponseBody
@@ -203,8 +242,7 @@ public class StartController {
         return setup.folders(clean(r.scan()), trim(r.backup()));
     }
 
-    public record AiRequest(String url, String key) {
-    }
+    public record AiRequest(String url, String key) { }
 
     @PostMapping("/start/ai")
     @ResponseBody
@@ -212,7 +250,6 @@ public class StartController {
         return setup.ai(trim(r.url()), trim(r.key()));
     }
 
-    // "Start Kai". problem: null = saved and switched, the page opens the chat
     @PostMapping("/start/proceed")
     @ResponseBody
     public Map<String, Object> proceed(@RequestBody Setup.Form f, HttpSession session) {
@@ -228,7 +265,6 @@ public class StartController {
         return Map.of("ok", false, "problem", problem);
     }
 
-    // One entry per folder row; empty rows are dropped
     private static List<String> clean(List<String> scan) {
         return scan == null ? List.of() : scan.stream().map(StartController::trim).filter(s -> !s.isEmpty()).toList();
     }
