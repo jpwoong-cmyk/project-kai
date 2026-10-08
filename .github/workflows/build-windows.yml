@@ -13,13 +13,41 @@ jobs:
       - name: Check out KAI
         uses: actions/checkout@v4
 
-      - name: Set up JDK 25
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-          java-package: 'jdk+jmods'
-          cache: maven
+
+      - name: Package bundled Java runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force `
+            staging, staging/jre, dist | Out-Null
+
+          Write-Host "Copying Java 25 runtime..."
+
+          Copy-Item "$env:JAVA_HOME\*" `
+            "staging/jre/" -Recurse -Force
+
+          if (!(Test-Path "staging/jre/bin/java.exe")) {
+            throw "Java executable not found"
+          }
+
+          $jar = Get-ChildItem target -Filter '*.jar' |
+            Where-Object {
+              $_.Name -notlike '*.original' -and
+              $_.Name -notlike '*-sources.jar'
+            } |
+            Select-Object -First 1
+
+          if (-not $jar) {
+            throw "No application JAR found"
+          }
+
+          Copy-Item $jar.FullName staging/kai.jar
+
+          tar -czf packaging/launcher/payload.tar.gz `
+            -C staging jre kai.jar
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Payload creation failed"
+          }
 
       - name: Set up Go
         uses: actions/setup-go@v5
