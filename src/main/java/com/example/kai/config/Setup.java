@@ -169,6 +169,46 @@ public class Setup {
 		}
 	}
 
+
+	// Update document locations only. Current AI model, chat and agent logic are retained.
+	public synchronized String updateWorkspaceFolders(List<String> scan, String backup) {
+		if (!ready()) return "Start KAI before changing workspace folders.";
+		try {
+			Properties p = KaiConfig.read(file);
+			p.setProperty(KaiConfig.SCAN, String.join(", ", scan));
+			p.setProperty(KaiConfig.BACKUP, backup);
+			KaiProperties checked = KaiConfig.check(file, p, true);
+			KaiConfig.write(file, Map.of(KaiConfig.SCAN, String.join(", ", scan),
+					KaiConfig.BACKUP, backup));
+			properties = checked;
+			return null;
+		} catch (KaiConfig.Invalid e) {
+			return e.getMessage();
+		} catch (IOException e) {
+			return "Could not save the workspace folders: " + e.getMessage();
+		}
+	}
+
+	// Reuse the provider's existing model listing and connection test.
+	public synchronized String updateWorkspaceModel(String requested) {
+		if (!ready()) return "Start KAI before changing the AI model.";
+		String name = requested == null ? "" : requested.trim();
+		ModelProvider.Settings before = models.settings();
+		try {
+			String problem = modelProblem(models.models(before.url(), before.key()), name);
+			if (problem != null) return problem;
+			ModelProvider.Settings next = new ModelProvider.Settings(before.url(), before.key(), name);
+			ChatModel connection = models.connect(next);
+			KaiConfig.write(file, Map.of(ModelProvider.MODEL, name));
+			models.use(next, connection);
+			return null;
+		} catch (ModelProvider.Problem e) {
+			return e.getMessage();
+		} catch (IOException e) {
+			return "Could not save the AI model: " + e.getMessage();
+		}
+	}
+
 	// How many files Kai would read in this folder (the same listing the scan uses)
 	private Integer documents(Path dir) {
 		try {

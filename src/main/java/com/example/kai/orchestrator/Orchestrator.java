@@ -1,6 +1,7 @@
 package com.example.kai.orchestrator;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import com.example.kai.config.KaiProperties;
 import com.example.kai.config.Setup;
 import com.example.kai.config.KaiProperties.Target;
 import com.example.kai.repository.DocumentRepository;
+import com.example.kai.repository.ChunkedScan;
 import com.example.kai.writer.ChangeWriter;
 
 // The only thing the chat talks to. Plain Java: decides which agent runs when
@@ -111,6 +113,7 @@ public class Orchestrator {
 	public Finding.Report scan(String instruction, Finding.Source source, Progress progress) throws IOException {
 		KaiProperties properties = setup.properties(); // one set of settings from start to end
 		List<Future<Finding>> futures = new ArrayList<>();
+		List<Finding> skipped = new ArrayList<>();
 		try (ExecutorService pool = Executors.newFixedThreadPool(properties.parallel())) { // close() waits for all
 			for (Target target : properties.targets()) {
 				DocumentRepository repo = repository(target.type());
@@ -123,10 +126,18 @@ public class Orchestrator {
 					}
 					futures.add(pool.submit(() -> check(target, repo, instruction, id, progress)));
 				}
+				// Keep excluded files visible in progress and the final report.
+				for (DocumentRepository.SkippedFile s : repo.skipped(target.location())) {
+					progress.add("Skipped file: " + target.entry() + "/" + s.file() +
+							" (" + s.bytes() + " bytes): " + s.reason());
+					skipped.add(new Finding(target, s.file(),
+							Finding.Status.ERROR, "Skipped: " + s.reason() + " (" + s.bytes() + " bytes)", false, null));
+				}
 			}
 			progress.add("Checking " + futures.size() + " files, up to " + properties.parallel() + " at a time");
 		}
-		List<Finding> findings = futures.stream().map(Future::resultNow).toList();
+		List<Finding> findings = new ArrayList<>(futures.stream().map(Future::resultNow).toList());
+		findings.addAll(skipped);
 		Finding.Report report = new Finding.Report(instruction, source, properties.targets(), findings);
 		progress.add("Done: " + report.affectedCount() + " of " + findings.size() + " files affected");
 		return report;
@@ -142,6 +153,22 @@ public class Orchestrator {
 		boolean editable = repo.canWrite(id);
 		String name = target.entry() + "/" + id;
 		try {
+			long bytes = repo.fileSize(target.location(), id);
+			// Keep the old Editor + Reviewer path for small editable documents.
+			// Every Office/PDF document and larger text file is streamed and assessed
+			// section by section. Large files are review-only: no unsafe full rewrite.
+			if (bytes > 50_000 || !editable) {
+				progress.add("Scanner: checking " + name + " in sections");
+				try (Reader reader = repo.openText(target.location(), id)) {
+					ChunkedScan.Result result = ChunkedScan.assess(reader, scanner, instruction, name, progress);
+					if (!result.affected()) {
+						progress.add("Scanner: " + name + " needs no change");
+						return new Finding(target, id, Finding.Status.NOT_AFFECTED, result.reason(), false, null);
+					}
+					progress.add("Scanner: " + name + " must change (update by hand)");
+					return new Finding(target, id, Finding.Status.AFFECTED, result.reason(), false, null);
+				}
+			}
 			String content = repo.read(target.location(), id);
 			progress.add("Scanner: checking " + name);
 			ScannerAgent.Verdict v = scanner.assess(instruction, id, content);

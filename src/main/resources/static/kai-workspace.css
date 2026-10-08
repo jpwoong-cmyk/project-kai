@@ -104,3 +104,59 @@ body.kai-sidebar-collapsed > footer { left: 0; width: 100%; }
 @media (prefers-reduced-motion: reduce) {
     body > header, body > main, body > footer, .kai-sidebar { transition: none; }
 }
+
+/* Sidebar settings are native workspace controls, not read-only badges. */
+.kai-sidebar .kai-settings { display: flex; flex-direction: column; gap: 18px; }
+.kai-sidebar .kai-settings-section { min-width: 0; }
+.kai-sidebar .kai-settings-section h2 { font: 700 11px/1.5 system-ui, sans-serif; letter-spacing: .055em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 9px; }
+.kai-sidebar .kai-folder-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: stretch;
+    gap: 5px; margin: 0 0 8px; min-width: 0; }
+.kai-sidebar .kai-path-input { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 6px;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 8px;
+    color: var(--ink); background: var(--paper); text-overflow: ellipsis; }
+.kai-sidebar .kai-inline-action { border: 1px solid var(--line); background: var(--sheet); color: var(--teal);
+    font: 600 11px/1.3 system-ui, sans-serif; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+.kai-sidebar .kai-inline-action:hover { border-color: var(--teal); background: var(--paper); }
+.kai-sidebar .kai-inline-action:disabled { cursor: not-allowed; opacity: .5; }
+.kai-sidebar .kai-model-select { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--sheet); color: var(--ink); font: 12px/1.5 system-ui,sans-serif; }
+.kai-sidebar .kai-model-caption { font: 11px/1.5 system-ui,sans-serif; margin: 6px 0 0; color: var(--muted); }
+.kai-sidebar .kai-settings-status { margin: 0; font: 12px/1.5 system-ui,sans-serif; color: var(--teal); }
+.kai-sidebar .kai-settings-status:empty { display: none; }
+.kai-sidebar .kai-settings-status.bad { color: var(--error); }
+.kai-sidebar .kai-sidebar-nav { margin-top: auto; border-top: 1px solid var(--line); padding-top: 10px; }
+.kai-sidebar .new-chat { margin-top: 0; }
+
+/* Scanner verdicts: surfaced as a live, readable board; raw events stay on demand. */
+.kai-scan-board { margin-top: 12px; }
+.kai-scan-intro { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.kai-scan-columns { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.kai-scan-panel { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--sheet); overflow: hidden; }
+.kai-scan-heading { display: flex; align-items: center; gap: 8px; justify-content: space-between;
+    padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.kai-scan-heading h3 { margin: 0; font: 600 14px/1.35 system-ui, sans-serif; }
+.kai-scan-clean .kai-scan-heading { border-left: 4px solid #45865d; }
+.kai-scan-affected .kai-scan-heading { border-left: 4px solid var(--manual); }
+.kai-scan-count { flex: none; padding: 1px 9px; color: var(--teal); background: var(--paper);
+    border-radius: 999px; font: 700 13px/1.55 system-ui,sans-serif; }
+.kai-scan-empty { margin: 0; padding: 18px 14px; color: var(--muted); font-size: 12.5px; }
+.kai-scan-list { list-style: none; padding: 0; margin: 0; max-height: 370px; overflow: auto; }
+.kai-scan-list li { padding: 9px 14px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
+.kai-scan-list li:last-child { border-bottom: none; }
+.kai-scan-list li::before { content: '•'; color: #45865d; margin-right: 8px; }
+.kai-scan-affected .kai-scan-list li::before { color: var(--manual); }
+.kai-scan-issues { color: var(--error); font-size: 12px; }
+.kai-scan-issues:empty { display: none; }
+.kai-scan-raw { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
+.kai-scan-raw summary { padding: 10px 14px; color: var(--teal); font-weight: 600; }
+.kai-scan-raw .log { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; }
+@media (max-width: 750px) { .kai-scan-columns { grid-template-columns: minmax(0,1fr); } }
+
+/* Extra controls and visibility for 100 MB scanning. */
+.kai-sidebar .kai-folder-row:has(.kai-remove-folder) { grid-template-columns: minmax(0,1fr) auto auto; }
+.kai-sidebar .kai-remove-folder { padding: 6px 9px; color: var(--error); font-size: 16px; }
+.kai-scan-skipped { margin-top: 14px; }
+.kai-scan-skipped .kai-scan-heading { border-left: 4px solid var(--error); }
+.kai-scan-skipped .kai-scan-list li::before { color: var(--error); }
