@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<!-- Saved by ChangeWriter to <history folder>/<run>/Report.html on Finalize. Self-contained: no links back to Kai. -->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="'Kai report ' + ${run}">Kai report</title>
+    <style>
+        :root { color-scheme: light; --ink: #17252b; --muted: #5f6f76; --line: #dde4e7; --paper: #f6f8f9;
+                --teal: #1f5c6b; --error: #b42318; --manual: #b45309; --del: #fdecea; --add: #e6f4ea; }
+        body { margin: 0 auto; max-width: 980px; padding: 28px 24px 60px; background: var(--paper); color: var(--ink);
+               font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        h1 { font: 600 28px/1.2 Charter, "Iowan Old Style", Georgia, serif; margin: 0 0 4px; }
+        h2 { font: 500 20px/1.3 Charter, "Iowan Old Style", Georgia, serif; margin: 32px 0 10px; }
+        .meta { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+        .request { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; white-space: pre-wrap; }
+        .outcome { margin: 16px 0 0; padding: 10px 14px; border-radius: 8px; background: #fff; border: 1px solid var(--line);
+                   white-space: pre-wrap; font-weight: 500; }
+        section.file { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 0 0 14px; }
+        .file h3 { margin: 0 0 4px; font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .file p { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+        .file p.warn { color: var(--manual); }
+        code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .diff { border: 1px solid var(--line); border-radius: 6px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .diff > div { white-space: pre-wrap; padding: 0 10px 0 26px; min-height: 1.45em; text-indent: -16px; }
+        .diff .del { background: var(--del); }
+        .diff .add { background: var(--add); }
+        .diff .del::before { content: "− "; color: var(--error); }
+        .diff .add::before { content: "+ "; color: #1a7f37; }
+        .diff .same::before { content: "  "; }
+        .diff .gap { color: var(--muted); font-style: italic; background: var(--paper); text-indent: 0; padding-left: 10px; }
+        table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+        td, th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
+        th { color: var(--muted); font-weight: 500; }
+    </style>
+</head>
+<body>
+<h1>Kai change report</h1>
+<p class="meta" th:text="${run} + ': ' + ${rows.size()} + (${rows.size() == 1} ? ' file' : ' files') + ' selected for writing. The originals are in the Original files folder next to this report.'"></p>
+<p class="meta" th:if="${report.source}" th:text="'Checked against the updated file ' + ${report.source.name()} + ' (not scanned)'"></p>
+<div class="request" th:text="${report.instruction}"></div>
+<p class="outcome" th:text="${outcome}"></p>
+
+<h2>Changed files</h2>
+<section class="file" th:each="r : ${rows}" th:with="f=${r.finding}, p=${r.finding.proposal}">
+    <h3 th:text="${f.target.entry} + '/' + ${f.file}"></h3>
+    <p th:text="'Why: ' + ${f.reason}"></p>
+    <p th:classappend="${p.reviewOk() != null and p.reviewOk()} ? '' : 'warn'"
+       th:text="(${p.reviewOk() == null} ? 'Not reviewed. ' : (${p.reviewOk()} ? 'Reviewer: looks right. ' : 'Reviewer: please check. ')) + ${p.review()} + (${p.edited()} ? ' (Edited by the user after the review.)' : '')"></p>
+    <p>Original kept in <code th:text="${r.backup}"></code></p>
+    <div class="diff"><div th:each="l : ${p.diff()}" th:class="${l.kind}" th:text="${l.text}"></div></div>
+</section>
+
+<th:block th:unless="${#lists.isEmpty(notWritten)}">
+    <h2>Affected, but not changed by Kai</h2>
+    <table>
+        <tr><th>File</th><th>Why not</th></tr>
+        <tr th:each="f : ${notWritten}">
+            <td><code th:text="${f.target.entry} + '/' + ${f.file}"></code></td>
+            <td th:text="${f.manual()} ? 'Update by hand (Word, PowerPoint or PDF)' : (${f.proposal == null or !f.proposal.ready()} ? 'Could not apply: update by hand' : (${!f.proposal.include()} ? 'Unticked in the review' : 'No changes left after review'))"></td>
+        </tr>
+    </table>
+</th:block>
+</body>
+</html>

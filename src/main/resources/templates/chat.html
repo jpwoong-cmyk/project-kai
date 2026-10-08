@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kai</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --paper: #f6f8f9;
+            --sheet: #ffffff;
+            --ink: #17252b;
+            --muted: #5f6f76;
+            --line: #dde4e7;
+            --teal: #1f5c6b;
+            --marker: #ffe58a;   /* highlighter: files that must change */
+            --manual: #b45309;   /* affected, but docx/pptx/pdf: edit by hand */
+            --error: #b42318;
+            --del: #fdecea;      /* diff: removed line */
+            --add: #e6f4ea;      /* diff: added line */
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; background: var(--paper); color: var(--ink);
+            font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            display: flex; flex-direction: column; min-height: 100vh;
+        }
+        header, main, footer { width: 100%; max-width: 980px; margin: 0 auto; padding: 0 24px; }
+        header { display: flex; align-items: flex-start; gap: 28px; flex-wrap: wrap; padding-top: 28px; padding-bottom: 16px; }
+        h1 { margin: 0; font: 600 30px/1 Charter, "Iowan Old Style", Georgia, serif; letter-spacing: -0.01em; }
+        /* Settings at a glance: one chip per kai.scan.* entry (the comma-separated values), then the history folder */
+        .where { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; font-size: 13px; flex: 1; min-width: 0; }
+        .where dt { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+        .where dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+        .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: var(--sheet);
+                border: 1px solid var(--line); border-radius: 12px; padding: 2px 10px 2px 4px; }
+        .chip .type { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #fff;
+                      background: var(--teal); border-radius: 999px; padding: 1px 6px; }
+        .chip code { word-break: break-all; } /* wrap long paths; never hide the folder name */
+        .chip.plain { padding-left: 10px; }
+        code, .file { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+        .where code { color: var(--ink); }
+        .new-chat button { font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--teal);
+                           background: var(--sheet); border: 1px solid var(--teal); border-radius: 8px; padding: 6px 14px; }
+        .new-chat button:disabled { opacity: .5; cursor: not-allowed; }
+        .where a.change { color: var(--teal); font-size: 13px; font-weight: 500; align-self: center; }
+
+        main { flex: 1; padding-bottom: 300px; }
+
+        .empty { margin: 12vh 0 0; max-width: 560px; }
+        .empty h2 { font: 500 24px/1.3 Charter, "Iowan Old Style", Georgia, serif; margin: 0 0 8px; }
+        .empty p { color: var(--muted); margin: 0 0 18px; }
+        .examples { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+        .examples button {
+            font: inherit; text-align: left; cursor: pointer; color: var(--teal);
+            background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+        }
+        .examples button:hover { border-color: var(--teal); }
+        .recent { margin-top: 36px; }
+        .recent h3 { font: 500 18px/1.3 Charter, "Iowan Old Style", Georgia, serif; margin: 0 0 8px; }
+        .recent ol { list-style: none; margin: 0 0 10px; padding: 0; }
+        .recent li { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); }
+        .recent li a { color: var(--teal); font-weight: 500; text-decoration: none; flex: 1 1 260px; min-width: 0; }
+        .recent li a:hover { text-decoration: underline; }
+        .recent li span { color: var(--muted); font-size: 13px; }
+        .recent .outcome.APPLIED { color: #1a7f37; }
+        .recent .outcome.ROLLBACK_INCOMPLETE, .recent .outcome.UNFINISHED { color: var(--error); font-weight: 600; }
+        .recent a.all { color: var(--teal); font-size: 13px; font-weight: 500; }
+
+        .msg { margin: 18px 0; }
+        .user { display: flex; justify-content: flex-end; }
+        .user p {
+            margin: 0; max-width: 70%; background: var(--teal); color: #fff;
+            padding: 10px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap;
+        }
+        .error p {
+            margin: 0; color: var(--error); background: #fdecea; border: 1px solid #f5c2bd;
+            padding: 10px 14px; border-radius: 8px; white-space: pre-wrap;
+        }
+        .bot .summary { margin: 0 0 10px; font-weight: 500; }
+
+        .report { background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-weight: 500; font-size: 13px; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); }
+        td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        tr:last-child td { border-bottom: 0; }
+        td.name { white-space: nowrap; width: 1%; }
+        td.why { color: var(--muted); }
+
+        /* The file name is highlighted like a marker pen on a printout */
+        .AFFECTED .file { background: linear-gradient(transparent 45%, var(--marker) 45%, var(--marker) 90%, transparent 90%); }
+        .result { font-size: 13px; font-weight: 600; white-space: nowrap; }
+        .AFFECTED .result { color: var(--ink); }
+        .MANUAL .result { color: var(--manual); }
+        .ERROR .result, .ERROR td.why { color: var(--error); }
+        .NOT_AFFECTED .result { color: var(--muted); font-weight: 400; }
+
+        /* One group per kai.scan.* location; a thicker line starts each group */
+        tr.group-start > td { border-top: 2px solid var(--line); }
+        tr:first-child + tr.group-start > td { border-top: 0; }
+        td.location { width: 22%; background: var(--paper); border-right: 1px solid var(--line); word-break: break-all; }
+        td.location .type { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+                            color: var(--teal); border: 1px solid var(--teal); border-radius: 4px; padding: 0 5px; margin-bottom: 4px; }
+        td.location .entry { display: block; font-weight: 600; }
+        td.location small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+        td.location .count.hit { color: var(--ink); font-weight: 600; }
+        td.unchanged { padding: 0; }
+        td.unchanged .none { display: block; padding: 10px 14px; color: var(--muted); font-size: 13px; }
+        summary { cursor: pointer; padding: 10px 14px; color: var(--muted); font-size: 13px; }
+        details table { border-top: 1px solid var(--line); }
+
+        /* Review: one proposal row under each editable file */
+        tr.proposal td { padding-top: 0; }
+        .proposal-head { display: flex; gap: 16px; align-items: center; font-size: 13px; margin-bottom: 6px; }
+        .include { display: flex; gap: 6px; align-items: center; cursor: pointer; font-weight: 500; }
+        .edited { color: var(--teal); font-weight: 600; }
+        p.review { margin: 0 0 8px; font-size: 13px; padding: 6px 10px; border-radius: 6px; background: var(--paper); }
+        p.review.warn { background: #fff4e5; color: var(--manual); }
+        p.review.unchecked { color: var(--error); }
+        p.review em { color: var(--muted); }
+        p.apply-error { margin: 0; font-size: 13px; color: var(--error); white-space: pre-wrap; }
+        .diff { border: 1px solid var(--line); border-radius: 6px; overflow: auto; max-height: 420px;
+                font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .diff > div { white-space: pre-wrap; padding: 0 10px 0 26px; min-height: 1.45em; text-indent: -16px; }
+        .diff .del { background: var(--del); }
+        .diff .add { background: var(--add); }
+        .diff .del::before { content: "− "; color: var(--error); }
+        .diff .add::before { content: "+ "; color: #1a7f37; }
+        .diff .same::before { content: "  "; }
+        .diff .gap { color: var(--muted); font-style: italic; background: var(--paper); text-indent: 0; padding-left: 10px; }
+        .nodiff { margin: 0; font-size: 13px; color: var(--muted); }
+        details.edit { border: 0; margin-top: 6px; }
+        details.edit summary { padding: 4px 0; color: var(--teal); font-weight: 500; }
+        details.edit textarea { width: 100%; min-height: 260px; resize: vertical; padding: 10px; border: 1px solid var(--line);
+                border-radius: 6px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+        .save { display: flex; gap: 12px; align-items: center; margin-top: 10px; font-size: 13px; color: var(--muted); }
+        .save button { padding: 8px 18px; }
+        .save button.secondary { background: var(--sheet); color: var(--teal); border: 1px solid var(--teal); }
+        .applied { margin: 10px 0 0; font-size: 13px; font-weight: 600; color: var(--teal); }
+        .bot > p { margin: 0; white-space: pre-wrap; }
+        .log { background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+               max-height: 50vh; overflow: auto; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+        .log > div { white-space: pre-wrap; }
+        .log > div:last-child { color: var(--ink); }
+        .working .summary::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%;
+                                   background: var(--teal); animation: pulse 1s ease-in-out infinite alternate; }
+        @keyframes pulse { from { opacity: .2; } to { opacity: 1; } }
+        .open-report { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--teal); font-weight: 500; }
+        p.against { margin: -4px 0 10px; font-size: 13px; color: var(--muted); }
+
+        /* Changes found in an updated file: the user confirms (or fixes) them before the scan */
+        .changes .card { background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+        .changes .card textarea { width: 100%; min-height: 8em; resize: vertical; padding: 10px; border: 1px solid var(--line);
+                border-radius: 6px; font: inherit; color: var(--ink); }
+        .changes .card textarea[readonly] { background: var(--paper); color: var(--muted); }
+        .changes .warn { margin: 0 0 10px; font-size: 13px; padding: 6px 10px; border-radius: 6px; background: #fff4e5; color: var(--manual); }
+        .changes .warn ul { margin: 4px 0 0; padding-left: 18px; }
+
+        footer {
+            position: fixed; left: 0; right: 0; bottom: 0; max-width: none;
+            background: linear-gradient(transparent, var(--paper) 30%); padding-top: 28px; padding-bottom: 22px;
+        }
+        #ask { max-width: 932px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px; background: var(--sheet);
+               border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 6px 24px rgba(23, 37, 43, 0.08); }
+        #ask:focus-within { border-color: var(--teal); }
+        /* Multi-line: Enter adds a line, only the button sends (so release notes can be pasted) */
+        #ask textarea { flex: 1; border: 0; font: inherit; padding: 10px 12px; background: transparent; color: var(--ink);
+                        resize: vertical; min-height: 4.5em; max-height: 45vh; }
+        #ask textarea:focus { outline: none; }
+        #ask button { align-self: flex-end; height: 42px; }
+        /* Optional section on top of the composer: an updated file to check the others against */
+        #ask .source { flex-basis: 100%; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center;
+                       background: var(--paper); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; }
+        #ask .source.on { border: 1px solid var(--teal); background: #eef5f7; }
+        #ask .source label { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+        #ask .source .optional { margin-left: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+                                 color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; background: var(--sheet); }
+        #ask .source select { font: inherit; font-size: 13px; color: var(--ink); max-width: 100%; min-width: 0; justify-self: start;
+                              border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; background: var(--sheet); }
+        #ask .source p { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--muted); }
+        button[type=submit] {
+            font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 0 18px;
+            background: var(--teal); color: #fff; cursor: pointer;
+        }
+        button[type=submit]:disabled { opacity: 0.6; cursor: wait; }
+        button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+        @media (max-width: 640px) {
+            .user p { max-width: 90%; }
+            td.name { white-space: normal; }
+            th:nth-child(4), td.why { display: none; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Kai</h1>
+    <dl class="where">
+        <dt>Scanning</dt>
+        <dd>
+            <span class="chip" th:each="t : ${targets}" th:title="${t.location}">
+                <span class="type" th:text="${t.type}"></span><code th:text="${t.entry}"></code>
+            </span>
+        </dd>
+        <dt>History</dt>
+        <dd><span class="chip plain" th:title="${backupDir}"><code th:text="${backupDir}"></code></span><a class="change" href="/history">Past reports</a></dd>
+        <dt>AI model</dt>
+        <dd><span class="chip plain"><code th:text="${aiModel}"></code></span><a class="change" href="/start">Change settings</a></dd>
+    </dl>
+    <!-- Clears the conversation, keeps the settings. Asks first if anything unfinished would be lost -->
+    <form method="post" action="/new" class="new-chat" th:if="${!#lists.isEmpty(messages)}">
+        <button type="submit" th:disabled="${log != null}" th:attr="data-warn=${unfinished}"
+                th:title="${log != null} ? 'Wait until the scan has finished' : 'Clear this conversation. Settings stay as they are.'">New chat</button>
+    </form>
+</header>
+
+<main>
+    <section class="empty" th:if="${#lists.isEmpty(messages)}">
+        <h2>Describe a change, and Kai finds every document it touches.</h2>
+        <p>The scanner agent checks each file, the editor drafts the changes and the reviewer double-checks them.
+            Nothing is written until you review and approve. You can paste release notes too.</p>
+        <p>Already updated one document? Pick it under <strong>Updated file</strong> and summarize what changed.
+            Kai finds those changes in it, you confirm them, then it checks every other file.</p>
+        <div class="examples">
+            <button type="button">Rename the product from Acme Portal to Kai Hub</button>
+            <button type="button">We now require Java 21 instead of 17</button>
+            <button type="button">Change the application port from 8080 to 9090</button>
+        </div>
+        <!-- The latest finalized changes, from the history folder, so they stay reachable after a new chat -->
+        <div class="recent" th:if="${recent != null and !#lists.isEmpty(recent)}">
+            <h3>Recent changes</h3>
+            <ol>
+                <li th:each="r : ${recent}">
+                    <a th:href="${r.appHref()}" target="_blank" th:text="${r.headline()}"></a>
+                    <span th:text="${r.when()}"></span>
+                    <span class="outcome" th:classappend="${r.result()}" th:text="${r.outcome()}"></span>
+                </li>
+            </ol>
+            <a class="all" href="/history" th:text="${older > 0} ? 'All past reports (' + ${older} + ' more)' : 'All past reports'">All past reports</a>
+        </div>
+    </section>
+
+    <div th:each="m, mi : ${messages}" class="msg" th:classappend="${m.sender}"
+         th:id="${m.report != null} ? 'report-' + ${mi.index}">
+        <p th:if="${m.report == null and m.extraction == null}" th:text="${m.text}"></p>
+        <a th:if="${m.link}" th:href="@{${m.link}}" target="_blank" class="open-report">Open the report</a>
+
+        <!-- One form per report: "Save edits" stores the ticks and edited texts in the session -->
+        <form th:if="${m.report}" th:action="@{/save}" method="post">
+            <input type="hidden" name="report" th:value="${mi.index}">
+            <p class="summary" th:text="${m.text}"></p>
+            <p class="against" th:if="${m.report.source}">Checked against
+                <span class="file" th:text="${m.report.source.name()}"></span> (the updated file, not scanned)</p>
+            <div class="report">
+                <!-- Grouped by kai.scan.* entry: the location cell spans all rows of its files.
+                     Files that need attention first, then one folded "No change needed" row. -->
+                <table>
+                    <tr><th>Location</th><th>File</th><th>Result</th><th>Why</th></tr>
+                    <th:block th:each="g : ${m.report.groups()}" th:with="rows=${g.rows()}">
+                    <th:block th:each="f, fi : ${g.attention()}"
+                              th:with="i=${m.report.findings.indexOf(f)}, p=${f.proposal}, failed=${f.proposal != null and !f.proposal.ready()}">
+                    <tr th:class="${failed} ? 'AFFECTED ERROR' : (${f.manual()} ? 'AFFECTED MANUAL' : ${f.status.name()})"
+                        th:classappend="${fi.first} ? 'group-start'">
+                        <td th:if="${fi.first}" th:rowspan="${rows}" class="location" th:insert="~{::location(${g})}"></td>
+                        <td class="name"><span class="file" th:text="${f.file}"></span></td>
+                        <td class="result" th:text="${failed} ? 'Could not apply' : (${f.manual()} ? 'Update by hand' : (${f.affected()} ? 'Must change' : 'Could not check'))"></td>
+                        <td class="why" th:text="${f.reason}"></td>
+                    </tr>
+                    <tr th:if="${p != null}" class="proposal">
+                        <td colspan="3">
+                            <p th:if="${failed}" class="apply-error" th:text="${p.error()}"></p>
+                            <th:block th:unless="${failed}" th:with="d=${p.diff()}">
+                                <div class="proposal-head">
+                                    <label class="include">
+                                        <input type="checkbox" th:name="'include' + ${i}" th:checked="${p.include()}"> Include this file
+                                    </label>
+                                    <span th:if="${p.edited()}" class="edited">Edited by you</span>
+                                </div>
+                                <p class="review" th:classappend="${p.reviewOk() == null} ? 'unchecked' : (${p.reviewOk()} ? 'ok' : 'warn')">
+                                    <strong th:text="${p.reviewOk() == null} ? 'Not reviewed.' : (${p.reviewOk()} ? 'Reviewer: looks right.' : 'Reviewer: please check.')"></strong>
+                                    <span th:text="${p.review()}"></span>
+                                    <em th:if="${p.edited()}">(This is about Kai's proposal, before your edit.)</em>
+                                </p>
+                                <div class="diff" th:unless="${#lists.isEmpty(d)}"><div th:each="l : ${d}" th:class="${l.kind}" th:text="${l.text}"></div></div>
+                                <p class="nodiff" th:if="${#lists.isEmpty(d)}">No differences from the original file.</p>
+                                <details class="edit">
+                                    <summary>Edit</summary>
+                                    <textarea th:name="'text' + ${i}" th:text="${p.proposed()}" spellcheck="false"
+                                              aria-label="Proposed text"></textarea>
+                                </details>
+                            </th:block>
+                        </td>
+                    </tr>
+                    </th:block>
+                    <!-- Folded list of this location's unaffected files (or "no files" if empty) -->
+                    <tr th:if="${#lists.isEmpty(g.attention())} or ${!#lists.isEmpty(g.unchanged())}" class="NOT_AFFECTED"
+                        th:classappend="${#lists.isEmpty(g.attention())} ? 'group-start'">
+                        <td th:if="${#lists.isEmpty(g.attention())}" th:rowspan="${rows}" class="location" th:insert="~{::location(${g})}"></td>
+                        <td colspan="3" class="unchanged">
+                            <span th:if="${#lists.isEmpty(g.findings)}" class="none">No supported files in this location</span>
+                            <details th:unless="${#lists.isEmpty(g.unchanged())}">
+                                <summary th:text="'No change needed (' + ${g.unchanged().size()} + ')'"></summary>
+                                <table>
+                                    <tr th:each="f : ${g.unchanged()}">
+                                        <td class="name"><span class="file" th:text="${f.file}"></span></td>
+                                        <td class="result">No change</td>
+                                        <td class="why" th:text="${f.reason}"></td>
+                                    </tr>
+                                </table>
+                            </details>
+                        </td>
+                    </tr>
+                    </th:block>
+                </table>
+            </div>
+            <div class="save" th:if="${m.report.readyCount() > 0 and !m.applied}">
+                <button type="submit" class="secondary">Save edits</button>
+                <button type="submit" class="finalize" th:formaction="@{/finalize}">Finalize</button>
+                <span>Save keeps your ticks and edits here. Finalize backs up the originals, then writes every ticked file.</span>
+            </div>
+            <p class="applied" th:if="${m.applied}">Finalized: these changes have been written.</p>
+        </form>
+
+        <!-- Changes the Extractor found in an updated file. "Scan other files" = POST /confirm:
+             the box text (maybe edited) is what every other file is checked against. -->
+        <form th:if="${m.extraction}" th:action="@{/confirm}" method="post" class="changes" th:with="x=${m.extraction}">
+            <input type="hidden" name="index" th:value="${mi.index}">
+            <p class="summary">Changes found in <span class="file" th:text="${x.source.name()}"></span></p>
+            <div class="card">
+                <p class="warn" th:if="${#lists.isEmpty(x.changes)}">Kai found none of these changes in the file.
+                    Check that you picked the right file, or type the changes below.</p>
+                <div class="warn" th:unless="${#lists.isEmpty(x.notFound)}"><strong>Not found in the file:</strong>
+                    <ul><li th:each="n : ${x.notFound}" th:text="${n}"></li></ul></div>
+                <textarea name="changes" th:text="${m.text}" th:readonly="${m.applied}" required spellcheck="false"
+                          aria-label="Changes to check the other files against"></textarea>
+                <div class="save" th:unless="${m.applied}">
+                    <button type="submit" th:disabled="${log != null}">Scan other files</button>
+                    <span>Fix anything Kai got wrong first. Every other file is checked against this list.</span>
+                </div>
+                <p class="applied" th:if="${m.applied}">Confirmed: the other files were checked against these changes.</p>
+            </div>
+        </form>
+    </div>
+
+    <!-- A scan is running: what the agents are doing, updated every second; the report replaces it when done -->
+    <div class="msg bot working" th:if="${log != null}">
+        <p class="summary">Kai is working on it. This can take a few minutes.</p>
+        <div id="log" class="log" th:data-url="@{/progress}"><div th:each="l : ${log}" th:text="${l}"></div></div>
+    </div>
+</main>
+
+<footer>
+    <!-- One scan at a time: the button is off while one runs.
+         Enter adds a new line; the only way to send is the button. -->
+    <form th:action="@{/chat}" method="post" id="ask">
+        <!-- Optional section: the document the user already updated. Then the box is a summary of its changes. -->
+        <div class="source" id="source-section">
+            <label for="source">Updated file<span class="optional">Optional</span></label>
+            <select name="source" id="source" aria-describedby="source-help"
+                    title="Pick a document you already changed. Kai finds the changes in it and checks every other file against them.">
+                <option value="">None</option>
+                <optgroup th:each="f, fi : ${folders}" th:label="${f.target.entry}">
+                    <option th:each="id : ${f.files}" th:value="${fi.index} + ':' + ${id}" th:text="${id}"></option>
+                </optgroup>
+            </select>
+            <p id="source-help">Already changed one document? Pick it here and summarize the changes below.
+                Kai finds them in that file, you confirm, then it checks every other file. Leave as None to just describe a change.</p>
+        </div>
+        <textarea name="message" rows="3" placeholder="Describe a change to your documents, or paste release notes"
+                  aria-label="Change request" required autofocus></textarea>
+        <button type="submit" th:disabled="${log != null}" th:text="${log != null} ? 'Scanning…' : 'Scan documents'">Scan documents</button>
+    </form>
+</footer>
+
+<script>
+    // New chat: confirm only if it would discard unwritten edits or unscanned changes
+    document.querySelector('.new-chat')?.addEventListener('submit', e => {
+        const warn = e.target.querySelector('button').dataset.warn;
+        if (warn && !confirm(warn)) e.preventDefault();
+    });
+    // Finalize writes files: ask once, then show progress
+    document.querySelectorAll('button.finalize').forEach(b => b.addEventListener('click', e => {
+        if (!confirm('Write every ticked file now? Kai backs up the originals first.')) {
+            e.preventDefault();
+            return;
+        }
+        setTimeout(() => { b.disabled = true; b.textContent = 'Writing…'; }); // after the form has submitted
+    }));
+    const form = document.getElementById('ask');
+    document.querySelectorAll('#ask, form.changes').forEach(f => f.addEventListener('submit', () => {
+        const b = f.querySelector('button');
+        b.disabled = true;
+        b.textContent = 'Starting…';
+    }));
+    // With an updated file picked, the box is a summary of its changes; step 1 only finds them
+    const send = form.querySelector('button');
+    const placeholder = form.message.placeholder;
+    form.source.addEventListener('change', () => {
+        const picked = form.source.value !== '';
+        form.message.placeholder = picked ? 'Summarize what changed in this file, e.g. support email changed, Java now 21' : placeholder;
+        if (!send.disabled) send.textContent = picked ? 'Find changes' : 'Scan documents';
+        document.getElementById('source-section').classList.toggle('on', picked);
+    });
+    // While a scan runs: fetch new log lines every second, reload when it's done to show the report
+    const log = document.getElementById('log');
+    if (log) {
+        const poll = () => fetch(log.dataset.url + '?since=' + log.children.length)
+            .then(r => r.json())
+            .then(p => {
+                p.lines.forEach(l => log.appendChild(document.createElement('div')).textContent = l);
+                if (p.lines.length) window.scrollTo(0, document.body.scrollHeight);
+                if (p.done) location.href = location.pathname; // drop any #report-N so the new report is in view
+                else setTimeout(poll, 1000);
+            })
+            .catch(() => setTimeout(poll, 3000)); // e.g. a network hiccup: keep trying
+        setTimeout(poll, 1000);
+    }
+    // Example requests fill the box, so you can edit before scanning
+    document.querySelectorAll('.examples button').forEach(e => e.addEventListener('click', () => {
+        form.message.value = e.textContent;
+        form.message.focus();
+    }));
+    // After "Save edits" the address ends in #report-N and the browser jumps there instead
+    if (!location.hash) {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+</script>
+
+    <!-- Location cell: the kai.scan.* entry as typed, full path on hover, blast radius count -->
+    <th:block th:remove="all">
+        <div th:fragment="location(g)">
+            <span class="type" th:text="${g.target.type}"></span>
+            <code class="entry" th:text="${g.target.entry}" th:title="${g.target.location}"></code>
+            <small class="full" th:unless="${g.target.entry == g.target.location}" th:text="${g.target.location}"></small>
+            <small class="count" th:classappend="${g.affectedCount() > 0} ? 'hit'"
+                   th:text="${g.affectedCount()} + ' of ' + ${g.findings.size()} + ' affected'"></small>
+        </div>
+    </th:block>
+</body>
+</html>

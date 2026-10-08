@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kai · Start</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --paper: #f6f8f9;
+            --sheet: #ffffff;
+            --ink: #17252b;
+            --muted: #5f6f76;
+            --line: #dde4e7;
+            --teal: #1f5c6b;
+            --marker: #ffe58a;   /* the chat's highlighter: here it marks what Kai has verified */
+            --error: #b42318;
+            --ok: #1a7f37;
+            --serif: Charter, "Iowan Old Style", Georgia, serif;
+            --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--paper); color: var(--ink);
+               font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        header, main { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+        header { padding-top: 28px; padding-bottom: 20px; }
+        h1 { margin: 0; font: 600 30px/1 var(--serif); letter-spacing: -0.01em; }
+        main { padding-bottom: 64px; }
+        [hidden] { display: none !important; }
+
+        .sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 24px 26px; }
+        h2 { margin: 0; font: 500 22px/1.25 var(--serif); }
+        h3 { margin: 0; font: 600 17px/1.3 var(--serif); }
+        p { margin: 0; }
+        .muted { color: var(--muted); }
+        .path { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+
+        /* Verified paths get the highlighter stroke, drawn once when a check confirms them */
+        .verified { background: linear-gradient(transparent 52%, var(--marker) 52%, var(--marker) 90%, transparent 90%) no-repeat 0 0 / 100% 100%;
+                    -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+        .verified.fresh { animation: mark .45s ease-out both; }
+        @keyframes mark { from { background-size: 0 100%; } to { background-size: 100% 100%; } }
+        @media (prefers-reduced-motion: reduce) { .verified.fresh { animation: none; } }
+
+        /* Ready: the summary that replaces the form when everything already works */
+        #ready h2 { margin-bottom: 18px; }
+        .facts { display: grid; grid-template-columns: 110px 1fr; gap: 14px 18px; margin: 0 0 24px; }
+        .facts dt { color: var(--muted); font-size: 13px; padding-top: 1px; }
+        .facts dd { margin: 0; min-width: 0; }
+        .facts .line + .line { margin-top: 8px; }
+        .count { display: block; color: var(--muted); font-size: 13px; }
+        .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+        /* The form */
+        .intro { margin: 0 0 22px; color: var(--muted); max-width: 62ch; }
+        section + section { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--line); }
+        .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+        .badge { font-size: 13px; color: var(--muted); white-space: nowrap; }
+        .badge.ok { color: var(--ok); }
+        .badge.bad { color: var(--error); }
+        .badge.ok::before { content: "✓ "; }
+        .field + .field { margin-top: 18px; }
+        label, .label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 6px; }
+        .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+        input, select {
+            width: 100%; min-width: 0; font: 14px var(--mono); color: var(--ink); background: #fff;
+            padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(31, 92, 107, .15); }
+        .invalid > input, .invalid > select, .invalid > .row > input { border-color: var(--error); }
+        .row { display: flex; gap: 6px; }
+        .folder + .folder { margin-top: 10px; }
+
+        /* Result line under a field: verified (with the marker) or what is wrong */
+        .status { font-size: 13px; margin-top: 5px; white-space: pre-wrap; }
+        .status:empty { display: none; }
+        .status.ok::before { content: "✓ "; color: var(--ok); font-weight: 600; }
+        .status.bad { color: var(--error); }
+
+        button { font: inherit; cursor: pointer; border-radius: 8px; }
+        .primary { font-weight: 600; padding: 10px 22px; background: var(--teal); color: #fff; border: 1px solid var(--teal); }
+        .primary:disabled { opacity: .45; cursor: not-allowed; }
+        .quiet { background: none; border: 0; color: var(--teal); font-weight: 500; padding: 8px 4px; }
+        .quiet:hover { text-decoration: underline; }
+        .icon { flex: none; width: 40px; padding: 0; font-size: 18px; color: var(--muted); background: var(--sheet); border: 1px solid var(--line); }
+        .icon:hover { color: var(--error); border-color: var(--error); }
+        .show { flex: none; padding: 0 12px; font-size: 13px; color: var(--teal); background: var(--sheet); border: 1px solid var(--line); }
+        .add { margin-top: 10px; font-size: 13px; padding: 5px 12px; background: none; color: var(--teal); border: 1px dashed var(--teal); }
+        button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+        .box { padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; font-size: 14px; }
+        .box + .box { margin-top: 8px; }
+        .box.bad { color: var(--error); background: #fdecea; border: 1px solid #f5c2bd; }
+        .box.info { background: var(--paper); border: 1px solid var(--line); margin-bottom: 22px; }
+        .box.pass { color: #14532d; background: #e6f4ea; border: 1px solid #b7dfc3; margin-top: 30px; }
+        .box.pass + .actions { margin-top: 16px; }
+        .general { margin-bottom: 14px; }
+        .general:empty { display: none; }
+
+        .actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        form .actions { margin-top: 30px; }
+        .why { font-size: 13px; color: var(--muted); }
+
+        /* Start: what Kai is doing, one step at a time */
+        .steps { list-style: none; margin: 16px 0 0; padding: 0; font-size: 14px; }
+        .steps li { color: var(--muted); padding: 2px 0 2px 24px; position: relative; }
+        .steps li::before { content: "○"; position: absolute; left: 2px; }
+        .steps li.now { color: var(--ink); }
+        .steps li.now::before { content: "●"; color: var(--teal); animation: pulse 1s ease-in-out infinite alternate; }
+        .steps li.done::before { content: "✓"; color: var(--ok); }
+        .steps li.failed { color: var(--error); }
+        .steps li.failed::before { content: "✕"; }
+        @keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) { .steps li.now::before { animation: none; } }
+        .start-problem { margin-top: 12px; }
+
+        @media (max-width: 560px) {
+            header, main { padding-left: 14px; padding-right: 14px; }
+            .sheet { padding: 20px 18px; }
+            .facts { grid-template-columns: 1fr; gap: 2px; }
+            .facts dd + dt { margin-top: 14px; }
+        }
+    </style>
+</head>
+<body>
+<header><h1>Kai</h1></header>
+
+<main>
+    <p id="loading" class="muted" aria-live="polite">Checking your settings…</p>
+
+    <!-- Everything already works: one summary, one button -->
+    <div id="ready" class="sheet" hidden>
+        <h2>Ready to scan</h2>
+        <dl class="facts">
+            <dt>Documents</dt><dd id="r-folders"></dd>
+            <dt>History</dt><dd id="r-backup"></dd>
+            <dt>AI model</dt><dd id="r-ai"></dd>
+        </dl>
+        <div class="actions">
+            <button type="button" class="primary" id="r-start">Start Kai</button>
+            <button type="button" class="quiet" id="r-edit">Edit settings</button>
+        </div>
+        <ol class="steps" id="r-steps" hidden></ol>
+        <div class="box bad start-problem" id="r-problem" role="alert" hidden></div>
+    </div>
+
+    <!-- Something is missing or wrong, or the user wants to change it -->
+    <form id="form" class="sheet" hidden novalidate>
+        <p class="intro">Kai checks each setting when you leave the field. Your Kai admin can give you the AI address and key.</p>
+        <div class="box info" id="note" hidden></div>
+
+        <section aria-labelledby="h-docs">
+            <div class="section-head">
+                <h3 id="h-docs">Documents</h3>
+                <span class="badge" id="b-docs" aria-live="polite"></span>
+            </div>
+            <div class="general" id="general" role="alert"></div>
+            <div class="field">
+                <span class="label" id="l-folders">Folders to scan</span>
+                <div id="folders" role="group" aria-labelledby="l-folders"></div>
+                <p class="status bad" id="s-folders"></p>
+                <button type="button" class="add" id="add">+ Add folder</button>
+                <p class="hint">Kai also reads the folders inside. Relative paths start from the folder of kai.properties.</p>
+            </div>
+            <div class="field">
+                <label for="backup">History folder</label>
+                <input id="backup" autocomplete="off" placeholder="~/Kai history">
+                <p class="status" id="s-backup" aria-live="polite"></p>
+                <p class="hint">Kai keeps a report of every change here, with the original files. It must be outside the folders to scan.</p>
+            </div>
+        </section>
+
+        <section aria-labelledby="h-ai">
+            <div class="section-head">
+                <h3 id="h-ai">AI service</h3>
+                <span class="badge" id="b-ai" aria-live="polite"></span>
+            </div>
+            <div class="field">
+                <label for="url">Address</label>
+                <input id="url" autocomplete="off" placeholder="https://api.openai.com/v1">
+                <p class="status" id="s-url" aria-live="polite"></p>
+            </div>
+            <div class="field">
+                <label for="key">Key</label>
+                <div class="row">
+                    <input id="key" type="password" autocomplete="off" spellcheck="false">
+                    <button type="button" class="show" id="show" aria-controls="key" aria-pressed="false">Show</button>
+                </div>
+                <p class="hint">Kept in kai.properties on this computer. Treat it like a password.</p>
+            </div>
+            <div class="field">
+                <label for="model-list">Model</label>
+                <select id="model-list" disabled><option value="">Enter the address and key first</option></select>
+                <input id="model-name" autocomplete="off" placeholder="Model name" aria-label="Model name" hidden>
+                <p class="status" id="s-model" aria-live="polite"></p>
+            </div>
+        </section>
+
+        <div class="box pass" id="passed" role="status" hidden></div>
+        <div class="actions">
+            <button type="submit" class="primary" id="start" disabled>Start Kai</button>
+            <span class="why" id="why" aria-live="polite"></span>
+        </div>
+        <ol class="steps" id="steps" hidden></ol>
+        <div class="box bad start-problem" id="problem" role="alert" hidden></div>
+    </form>
+
+    <template id="folder-row">
+        <div class="folder">
+            <div class="row">
+                <input autocomplete="off" placeholder="~/Documents/Runbooks" aria-label="Folder to scan">
+                <button type="button" class="icon" title="Remove this folder" aria-label="Remove this folder">×</button>
+            </div>
+            <p class="status" aria-live="polite"></p>
+        </div>
+    </template>
+</main>
+
+<script>
+(() => {
+    const $ = id => document.getElementById(id);
+    const form = $("form"), foldersEl = $("folders"), start = $("start"), why = $("why");
+    const modelList = $("model-list"), modelName = $("model-name");
+
+    // What the last checks said. null = not checked (yet, or since the last edit)
+    let docs = null, ai = null, starting = false;
+    const pending = { docs: 0, ai: 0 };   // requests in flight
+    const seq = { docs: 0, ai: 0 };       // answers to older requests are ignored
+
+    const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body) }).then(r => { if (!r.ok) throw new Error("Kai answered with error " + r.status); return r.json(); });
+    const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text || "" });
+    const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+    const folderValues = () => [...foldersEl.querySelectorAll("input")].map(i => i.value.trim()).filter(v => v);
+    const model = () => (modelList.hidden ? modelName.value : modelList.value).trim();
+    const values = () => ({ scan: folderValues(), backup: $("backup").value.trim(), url: $("url").value.trim(),
+        key: $("key").value.trim(), model: model() });
+
+    // kind: "ok" (with the verified path), "bad", or "" (nothing to say)
+    function setStatus(st, kind, text, path) {
+        st.className = "status" + (kind ? " " + kind : "");
+        st.replaceChildren();
+        if (path) st.append(el("span", "path verified fresh", path), text ? "   " + text : "");
+        else st.textContent = text || "";
+        st.parentElement.classList.toggle("invalid", kind === "bad");
+    }
+
+    // result: true = all fine, false = problems, "wait" = checking, null = not checked
+    function badge(b, result, problems) {
+        b.className = "badge" + (result === true ? " ok" : result === false && problems ? " bad" : "");
+        b.textContent = result === "wait" ? "Checking…" : result === true ? "Checked"
+            : result === false && problems ? plural(problems, "problem") : "";
+    }
+
+    // ---------------------------------------------------------------- Documents
+
+    function addRow(value, focus) {
+        const row = $("folder-row").content.firstElementChild.cloneNode(true);
+        row.querySelector("input").value = value || "";
+        foldersEl.append(row);
+        if (focus) row.querySelector("input").focus();
+    }
+
+    function showDocs(r) {
+        docs = r;
+        let i = 0, problems = r.general.length;
+        // The server answers for the non-empty rows, in order
+        for (const row of foldersEl.querySelectorAll(".folder")) {
+            const input = row.querySelector("input"), st = row.querySelector(".status");
+            const f = input.value.trim() ? r.folders[i++] : null;
+            if (!f) setStatus(st, "", "");
+            else if (f.problem) { problems++; setStatus(st, "bad", f.problem + "\n" + f.path); }
+            else setStatus(st, "ok", f.documents == null ? "" : plural(f.documents, "document"), f.path);
+        }
+        setStatus($("s-folders"), r.foldersProblem ? "bad" : "", r.foldersProblem);
+        if (r.foldersProblem) problems++;
+        if (r.backupProblem) { problems++; setStatus($("s-backup"), "bad", r.backupProblem + (r.backupPath ? "\n" + r.backupPath : "")); }
+        else if (r.backupPath) setStatus($("s-backup"), "ok", r.backupExists ? "" : "Created when you start Kai", r.backupPath);
+        else setStatus($("s-backup"), "", "");
+        $("general").replaceChildren(...r.general.map(g => el("div", "box bad", g)));
+        badge($("b-docs"), r.ok, problems);
+        update();
+    }
+
+    async function checkDocs() {
+        const n = ++seq.docs;
+        docs = null; pending.docs++;
+        badge($("b-docs"), "wait");
+        update();
+        try {
+            const r = await post("/start/folders", { scan: folderValues(), backup: $("backup").value.trim() });
+            if (n === seq.docs) showDocs(r);
+        }
+        catch (e) {
+            if (n === seq.docs) { $("general").replaceChildren(el("div", "box bad", e.message)); badge($("b-docs"), false, 1); }
+        }
+        finally { pending.docs--; update(); }
+    }
+
+    // ---------------------------------------------------------------- AI service
+
+    function showAi(r, chosen) {
+        ai = r;
+        // Repeat the address only if Kai changed it (added /v1)
+        const said = r.models.length ? "Connected, " + plural(r.models.length, "model") + " offered" : "Connected";
+        const same = r.url === $("url").value.trim();
+        if (r.ok) setStatus($("s-url"), "ok", same ? said : said + " (Kai uses this address)", same ? null : r.url);
+        else setStatus($("s-url"), "bad", r.problem);
+        // The model list always comes from the service, never from kai.properties
+        const listed = r.ok && r.models.length > 0;
+        modelList.hidden = r.ok && !listed;   // the service doesn't list its models: type the name
+        modelName.hidden = !modelList.hidden;
+        if (!modelName.hidden) modelName.value = chosen;
+        modelList.disabled = !listed;
+        const first = new Option(listed ? "Choose a model" : "Enter a working address and key first", "");
+        first.disabled = listed;
+        modelList.replaceChildren(first, ...(listed ? r.models.map(m => new Option(m, m)) : []));
+        modelList.value = listed && r.models.includes(chosen) ? chosen : "";
+        showModel(chosen);
+    }
+
+    // Same rule as the server (Setup.modelProblem)
+    function modelProblem(chosen) {
+        if (!ai || !ai.ok) return null;
+        if (!ai.models.length) return chosen ? null : "Enter the model name your Kai admin gave you.";
+        if (!chosen) return "Choose a model.";
+        return ai.models.includes(chosen) ? null
+            : "\"" + chosen + "\" is not offered by this AI service. Choose one of the " + ai.models.length + " models in the list.";
+    }
+
+    // chosen: what kai.properties said (on load) or what the user picked
+    function showModel(chosen) {
+        const p = modelProblem(chosen);
+        const loud = p && chosen ? p : null;   // a wrong model is a problem; an empty choice is just a to-do
+        setStatus($("s-model"), loud ? "bad" : "", loud);
+        badge($("b-ai"), ai ? ai.ok && !p : null, (ai && !ai.ok ? 1 : 0) + (loud ? 1 : 0));
+        update();
+    }
+
+    async function checkAi() {
+        const n = ++seq.ai, chosen = model();
+        ai = null; pending.ai++;
+        badge($("b-ai"), "wait");
+        update();
+        try {
+            const r = await post("/start/ai", { url: $("url").value.trim(), key: $("key").value.trim() });
+            if (n === seq.ai) showAi(r, chosen);
+        }
+        catch (e) {
+            if (n === seq.ai) { setStatus($("s-url"), "bad", e.message); badge($("b-ai"), false, 1); }
+        }
+        finally { pending.ai--; update(); }
+    }
+
+    // ---------------------------------------------------------------- Start Kai
+
+    const canStart = () => !starting && !pending.docs && !pending.ai && !!docs?.ok && !!ai?.ok && !modelProblem(model());
+
+    function update() {
+        start.disabled = !canStart();
+        // All checks passed: say what Start Kai will use, in one green box
+        const passed = $("passed");
+        passed.hidden = !canStart();
+        if (canStart()) {
+            const n = docs.folders.reduce((sum, f) => sum + (f.documents || 0), 0);
+            passed.textContent = "All settings work. Kai will scan " + plural(docs.folders.length, "folder")
+                + " (" + plural(n, "document") + "), keep its history in " + docs.backupPath + " and use "
+                + model() + " at " + ai.url + ". Start Kai tests this model, then saves the settings.";
+        }
+        why.textContent = starting || canStart() ? ""
+            : pending.docs || pending.ai ? "Checking…"
+            : !docs || !ai ? "Fill in each field. Kai checks it when you leave the field."
+            : modelProblem(model()) && docs.ok && ai.ok ? "Choose a model to continue."
+            : "Fix the fields marked in red to continue.";
+    }
+
+    async function startKai(v, stepsEl, problemEl, buttons) {
+        starting = true;
+        buttons.forEach(b => b.disabled = true);
+        problemEl.hidden = true;
+        const li = ["Testing the model", "Saving your settings", "Opening Kai"].map(t => el("li", "", t));
+        stepsEl.replaceChildren(...li);
+        stepsEl.hidden = false;
+        li[0].className = "now";
+        try {
+            const r = await post("/start/proceed", v);   // tests, then saves, in one call
+            if (!r.ok) throw new Error(r.problem);
+            li[0].className = li[1].className = "done";
+            li[2].className = "now";
+            location.href = "/";
+        }
+        catch (e) {
+            li[0].className = "failed";
+            li.slice(1).forEach(x => x.hidden = true);
+            problemEl.textContent = e.message + "\nNothing was saved.";
+            problemEl.hidden = false;
+            starting = false;
+            buttons.forEach(b => b.disabled = false);
+            update();
+        }
+    }
+
+    // ---------------------------------------------------------------- Ready summary
+
+    function showReady(s) {
+        const line = (path, extra) => {
+            const d = el("div", "line");
+            d.append(el("span", "path verified", path));
+            if (extra) d.append(el("span", "count", extra));
+            return d;
+        };
+        $("r-folders").replaceChildren(...s.folders.folders.map(f =>
+            line(f.path, f.documents == null ? "" : plural(f.documents, "document"))));
+        $("r-backup").replaceChildren(line(s.folders.backupPath, s.folders.backupExists ? "" : "created when you start"));
+        $("r-ai").replaceChildren(line(s.form.model, ""), el("div", "sub",
+            "at " + s.ai.url + (s.ai.models.length ? ", one of " + plural(s.ai.models.length, "model") + " offered" : "")));
+        $("ready").hidden = false;
+        $("r-start").focus();
+    }
+
+    function showForm() {
+        $("ready").hidden = true;
+        form.hidden = false;
+        // Put the cursor where the first problem is
+        const first = form.querySelector(".invalid input, .invalid select");
+        (first || foldersEl.querySelector("input")).focus();
+    }
+
+    function fill(s) {
+        foldersEl.replaceChildren();
+        (s.form.scan.length ? s.form.scan : [""]).forEach(v => addRow(v));
+        $("backup").value = s.form.backup;
+        $("url").value = s.form.url;
+        $("key").value = s.form.key;
+        if (s.note) { $("note").textContent = s.note; $("note").hidden = false; }
+        if (s.folders) showDocs(s.folders);
+        if (s.ai) showAi(s.ai, s.form.model);
+        else modelName.value = s.form.model;
+        update();
+    }
+
+    // ---------------------------------------------------------------- Wiring
+
+    // Typing makes that part "not checked"; leaving the field (or pressing Enter) checks it
+    const docsEdited = () => { seq.docs++; docs = null; badge($("b-docs"), null); update(); };
+    const aiEdited = () => { seq.ai++; ai = null; badge($("b-ai"), null); update(); };
+    foldersEl.addEventListener("input", docsEdited);
+    foldersEl.addEventListener("change", checkDocs);
+    $("backup").addEventListener("input", docsEdited);
+    $("backup").addEventListener("change", checkDocs);
+    for (const id of ["url", "key"]) {
+        $(id).addEventListener("input", aiEdited);
+        $(id).addEventListener("change", checkAi);
+    }
+    modelList.addEventListener("change", () => showModel(model()));
+    modelName.addEventListener("input", () => showModel(model()));
+
+    $("add").addEventListener("click", () => addRow("", true));
+    foldersEl.addEventListener("click", e => {
+        if (!e.target.classList.contains("icon")) return;
+        const row = e.target.closest(".folder");
+        if (foldersEl.children.length > 1) row.remove();
+        else row.querySelector("input").value = "";
+        checkDocs();
+    });
+    $("show").addEventListener("click", () => {
+        const k = $("key"), reveal = k.type === "password";
+        k.type = reveal ? "text" : "password";
+        $("show").textContent = reveal ? "Hide" : "Show";
+        $("show").setAttribute("aria-pressed", String(reveal));
+    });
+
+    // Enter in a field checks that field; it does not submit
+    form.addEventListener("keydown", e => {
+        if (e.key === "Enter" && e.target.tagName === "INPUT") {
+            e.preventDefault();
+            e.target.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+    });
+    form.addEventListener("submit", e => {
+        e.preventDefault();
+        if (canStart()) startKai(values(), $("steps"), $("problem"), [start]);
+    });
+
+    let loaded = null;
+    $("r-start").addEventListener("click", () => startKai(loaded.form, $("r-steps"), $("r-problem"), [$("r-start"), $("r-edit")]));
+    $("r-edit").addEventListener("click", showForm);
+
+    fetch("/start/state").then(r => { if (!r.ok) throw new Error("error " + r.status); return r.json(); }).then(s => {
+        loaded = s;
+        $("loading").hidden = true;
+        fill(s);
+        if (s.ready) showReady(s);
+        else showForm();
+    }).catch(e => {
+        $("loading").textContent = "Kai could not read its settings (" + e.message + "). Reload the page to try again.";
+    });
+})();
+</script>
+</body>
+</html>
