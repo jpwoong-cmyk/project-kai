@@ -209,6 +209,35 @@ public class Setup {
 		}
 	}
 
+	// Update the active AI connection without touching scanned folders or chat history.
+	// A blank supplied key means keep the active key; never send that key to the browser.
+	public synchronized String updateWorkspaceAi(String requestedUrl, String suppliedKey, String requestedModel) {
+		if (!ready()) return "Start KAI before changing AI settings.";
+		ModelProvider.Settings before = models.settings();
+		String url = requestedUrl == null || requestedUrl.isBlank() ? before.url()
+				: ModelProvider.normalize(requestedUrl);
+		String key = suppliedKey == null || suppliedKey.isBlank() ? before.key() : suppliedKey.trim();
+		String name = requestedModel == null ? "" : requestedModel.trim();
+		try {
+			String wrong = modelProblem(models.models(url, key), name);
+			if (wrong != null) return wrong;
+			ModelProvider.Settings next = new ModelProvider.Settings(url, key, name);
+			ChatModel connection = models.connect(next);
+			// Only persist changed values. An unchanged environment-backed key stays in place.
+			Map<String, String> changed = new LinkedHashMap<>();
+			put(changed, ModelProvider.URL, url, before.url());
+			put(changed, ModelProvider.KEY, key, before.key());
+			put(changed, ModelProvider.MODEL, name, before.model());
+			if (!changed.isEmpty()) KaiConfig.write(file, changed);
+			models.use(next, connection);
+			return null;
+		} catch (ModelProvider.Problem e) {
+			return e.getMessage();
+		} catch (IOException e) {
+			return "Could not save the AI settings: " + e.getMessage();
+		}
+	}
+
 	// How many files Kai would read in this folder (the same listing the scan uses)
 	private Integer documents(Path dir) {
 		try {

@@ -5,6 +5,7 @@ import java.util.Map;
 
 import jakarta.servlet.http.HttpSession;
 
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -30,6 +31,7 @@ public class WorkspaceController {
 
     public record FolderRequest(List<String> scan, String backup) { }
     public record ModelRequest(String model) { }
+    public record AiRequest(String url, String key, String model) { }
 
     @GetMapping("/workspace/models")
     @ResponseBody
@@ -66,6 +68,44 @@ public class WorkspaceController {
         if (blocked != null) return blocked;
         String issue = setup.updateWorkspaceModel(request.model());
         return issue == null ? ResponseEntity.ok(Map.of("ok", true))
+                : problem(HttpStatus.BAD_REQUEST, issue);
+    }
+
+    // Only expose the connection address and model; the active API key stays server-side.
+    @GetMapping("/workspace/ai-settings")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> currentAi(HttpSession session) {
+        if (!active(session)) return problem(HttpStatus.FORBIDDEN, "Start KAI first.");
+        ModelProvider.Settings current = models.settings();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(
+                "ok", true, "url", current.url(), "model", current.model(),
+                "keyConfigured", !current.key().isBlank()));
+    }
+
+    // Preview which models the edited address/key offers, without switching the live model.
+    @PostMapping("/workspace/ai-models")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> previewModels(@RequestBody AiRequest request, HttpSession session) {
+        if (!active(session)) return problem(HttpStatus.FORBIDDEN, "Start KAI first.");
+        ModelProvider.Settings current = models.settings();
+        String url = request.url() == null || request.url().isBlank() ? current.url() : request.url().trim();
+        String key = request.key() == null || request.key().isBlank() ? current.key() : request.key().trim();
+        try {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(
+                    "ok", true, "models", models.models(url, key)));
+        } catch (ModelProvider.Problem e) {
+            return problem(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    // Explicit Save: validates the model, tests connection and updates active settings.
+    @PostMapping("/workspace/ai-settings")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> updateAi(@RequestBody AiRequest request, HttpSession session) {
+        ResponseEntity<Map<String, Object>> blocked = canChange(session);
+        if (blocked != null) return blocked;
+        String issue = setup.updateWorkspaceAi(request.url(), request.key(), request.model());
+        return issue == null ? ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of("ok", true))
                 : problem(HttpStatus.BAD_REQUEST, issue);
     }
 

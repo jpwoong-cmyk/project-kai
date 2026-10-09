@@ -204,3 +204,27 @@ body.kai-sidebar-collapsed > footer { left: 0; width: 100%; }
 .kai-scan-skipped { margin-top: 14px; }
 .kai-scan-skipped .kai-scan-heading { border-left: 4px solid var(--error); }
 .kai-scan-skipped .kai-scan-list li::before { color: var(--error); }
+
+/* Inline AI settings editor. Matches the existing narrow KAI sidebar. */
+.kai-ai-edit-toggle { display:block; margin-top:9px; padding:5px 0; border:0; background:transparent;
+    text-decoration:underline; text-underline-offset:3px; cursor:pointer; font:600 12px/1.4 system-ui,sans-serif;
+    color:var(--teal); text-align:left; }
+.kai-ai-edit-toggle:disabled { opacity:.5; cursor:not-allowed; }
+.kai-ai-editor { display:flex; flex-direction:column; gap:10px; margin-top:12px; padding-top:12px;
+    border-top:1px solid var(--line); }
+.kai-ai-editor[hidden] { display:none; }
+.kai-ai-field { display:flex; flex-direction:column; gap:5px; min-width:0;
+    font:600 11px/1.4 system-ui,sans-serif; color:var(--ink); }
+.kai-ai-field > span { display:block; }
+.kai-ai-input { box-sizing:border-box; min-width:0; width:100%; padding:9px 8px; font:12px/1.4 system-ui,sans-serif;
+    color:var(--ink); background:var(--sheet); border:1px solid var(--line); border-radius:6px; }
+.kai-ai-field .kai-model-select { width:100%; }
+.kai-ai-input:focus-visible, .kai-ai-field .kai-model-select:focus-visible,
+.kai-ai-edit-toggle:focus-visible, .kai-ai-actions button:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+.kai-ai-hint { margin:0; color:var(--muted); font:11px/1.5 system-ui,sans-serif; }
+.kai-ai-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.kai-ai-actions button { border-radius:6px; border:1px solid var(--line); padding:7px 9px;
+    cursor:pointer; font:600 11px/1.4 system-ui,sans-serif; }
+.kai-ai-actions button:disabled { opacity:.55; cursor:wait; }
+.kai-ai-actions .kai-ai-primary { border-color:var(--teal); color:#fff; background:var(--teal); }
+.kai-ai-actions .kai-ai-secondary { color:var(--teal); background:var(--sheet); }

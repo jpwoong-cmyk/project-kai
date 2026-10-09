@@ -53,8 +53,8 @@
     const historyBlock = make('section', 'kai-settings-section');
     const modelBlock = make('section', 'kai-settings-section');
     scanBlock.append(make('h2', '', 'Folders to scan'));
-    historyBlock.append(make('h2', '', 'History folder'));
-    modelBlock.append(make('h2', '', 'AI model'));
+    historyBlock.append(make('h2', '', 'Backup folder'));
+    modelBlock.append(make('h2', '', 'AI Settings'));
     controls.append(scanBlock, historyBlock, modelBlock, status);
     sidebar.append(controls);
 
@@ -178,13 +178,13 @@
             const chosen = await pickPath();
             if (chosen && !scanning.includes(chosen)) await saveFolders([...scanning, chosen], historyFolder);
         }, 'Add another scan folder'));
-        historyBlock.replaceChildren(make('h2', '', 'History folder'));
+        historyBlock.replaceChildren(make('h2', '', 'Backup folder'));
         const history = make('div', 'kai-folder-row');
-        history.append(pathField(historyFolder, 'History folder'));
+        history.append(pathField(historyFolder, 'Backup folder'));
         history.append(button('Browse', async () => {
             const chosen = await pickPath();
             if (chosen && chosen !== historyFolder) await saveFolders(scanning, chosen);
-        }, 'Browse for history folder'));
+        }, 'Browse for backup folder'));
         historyBlock.append(history);
     }
     renderFolders();
@@ -233,6 +233,115 @@
         finally { busy = false; modelSelect.disabled = working; }
     });
     loadModels();
+
+    // Expandable connection editor. Sensitive keys are never displayed or prefetched.
+    const editAi = make('button', 'kai-ai-edit-toggle', 'Edit AI settings');
+    editAi.type = 'button';
+    editAi.disabled = working;
+    editAi.setAttribute('aria-expanded', 'false');
+    editAi.setAttribute('aria-controls', 'kai-ai-editor');
+    const editor = make('form', 'kai-ai-editor');
+    editor.id = 'kai-ai-editor'; editor.hidden = true;
+    editor.noValidate = true;
+    const field = (label, input) => {
+        const wrapper = make('label', 'kai-ai-field');
+        wrapper.append(make('span', '', label), input);
+        return wrapper;
+    };
+    const apiUrl = make('input', 'kai-ai-input');
+    apiUrl.type = 'url'; apiUrl.required = true;
+    apiUrl.autocomplete = 'off'; apiUrl.spellcheck = false;
+    apiUrl.placeholder = 'https://service.example/v1';
+    const apiKey = make('input', 'kai-ai-input');
+    apiKey.type = 'password'; apiKey.autocomplete = 'new-password';
+    apiKey.spellcheck = false; apiKey.placeholder = 'Leave blank to keep saved key';
+    const chosenModel = make('select', 'kai-model-select');
+    chosenModel.setAttribute('aria-label', 'AI model for new connection');
+    const manualModel = make('input', 'kai-ai-input');
+    manualModel.placeholder = 'Enter AI model name'; manualModel.autocomplete = 'off';
+    manualModel.hidden = true;
+    const modelField = field('AI model', chosenModel);
+    modelField.append(manualModel);
+    const modelHint = make('p', 'kai-ai-hint', 'Only enter a new API key when you want to replace the saved one.');
+    const actions = make('div', 'kai-ai-actions');
+    const refresh = make('button', 'kai-ai-secondary', 'Refresh models'); refresh.type = 'button';
+    const save = make('button', 'kai-ai-primary', 'Save & test'); save.type = 'submit';
+    const cancel = make('button', 'kai-ai-secondary', 'Cancel'); cancel.type = 'button';
+    actions.append(refresh, save, cancel);
+    editor.append(field('AI service address', apiUrl), field('API key', apiKey), modelField, modelHint, actions);
+    modelBlock.append(editAi, editor);
+
+    function fillAiModels(names, current) {
+        const listed = Array.isArray(names) ? names : [];
+        chosenModel.hidden = listed.length === 0;
+        manualModel.hidden = listed.length > 0;
+        chosenModel.replaceChildren(...listed.map(name => option(name, name)));
+        if (listed.length) {
+            if (current && !listed.includes(current)) chosenModel.prepend(option(current + ' (current)', current));
+            chosenModel.value = current && (listed.includes(current) || chosenModel.options.length) ? current : listed[0];
+        } else manualModel.value = current || '';
+        modelHint.textContent = listed.length ? listed.length + ' available models' :
+            'This provider does not list its models. Enter the exact model name.';
+    }
+    function currentEditorModel() {
+        return chosenModel.hidden ? manualModel.value.trim() : chosenModel.value.trim();
+    }
+    async function refreshAiModels() {
+        const before = currentEditorModel() || selectedModel;
+        const response = await jsonPost('/workspace/ai-models', {
+            url: apiUrl.value.trim(), key: apiKey.value, model: before
+        });
+        fillAiModels(response.models, before);
+    }
+    async function closeAiEditor() {
+        editor.hidden = true;
+        editAi.setAttribute('aria-expanded', 'false');
+        editAi.textContent = 'Edit AI settings';
+        apiKey.value = '';
+    }
+    editAi.addEventListener('click', async () => {
+        if (!editor.hidden) { closeAiEditor(); return; }
+        if (working || busy) return;
+        busy = true; editAi.disabled = true; message('Loading AI settings…');
+        try {
+            const current = await request('/workspace/ai-settings');
+            apiUrl.value = current.url;
+            apiKey.value = '';
+            apiKey.placeholder = current.keyConfigured ? 'Leave blank to keep saved key' : 'Enter your API key';
+            fillAiModels(Array.from(modelSelect.options).filter(o => o.value && !o.value.endsWith(' (current)')).map(o => o.value), current.model);
+            editor.hidden = false;
+            editAi.textContent = 'Close AI settings';
+            editAi.setAttribute('aria-expanded', 'true');
+            message('');
+        } catch (e) { message(e.message, true); }
+        finally { busy = false; editAi.disabled = working; }
+    });
+    refresh.addEventListener('click', async () => {
+        if (working || busy) return;
+        busy = true; refresh.disabled = true; save.disabled = true; message('Checking available models…');
+        try { await refreshAiModels(); message('Model list refreshed.'); }
+        catch (e) { message(e.message, true); }
+        finally { busy = false; refresh.disabled = false; save.disabled = false; }
+    });
+    cancel.addEventListener('click', closeAiEditor);
+    editor.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!guardChange()) return;
+        const url = apiUrl.value.trim(), model = currentEditorModel();
+        if (!url || !model) { message('Enter an AI service address and choose a model.', true); return; }
+        busy = true; save.disabled = true; refresh.disabled = true;
+        editAi.disabled = true; message('Testing AI connection and saving…');
+        try {
+            await jsonPost('/workspace/ai-settings', { url, key: apiKey.value, model });
+            selectedModel = model;
+            modelSelect.replaceChildren(option(model, model));
+            modelLabel.textContent = 'Current model: ' + model;
+            message('AI settings saved and connection tested. Your chat was not reset.');
+            await closeAiEditor();
+            await loadModels();
+        } catch (e) { message(e.message, true); }
+        finally { busy = false; save.disabled = false; refresh.disabled = false; editAi.disabled = working; }
+    });
 
     // Live scan status board. Keep #log and its children untouched: the built-in
     // progress poll uses log.children.length to obtain only unseen events.
